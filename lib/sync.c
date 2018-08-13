@@ -396,6 +396,7 @@ uint32_t smb2_write(struct smb2_context *smb2, struct smb2fh *fh,
 uint32_t smb2_unlink(struct smb2_context *smb2, const char *path)
 {
         struct sync_cb_data cb_data;
+        struct smb2fh *fh = NULL;
 
         cb_data.is_finished = 0;
 
@@ -408,12 +409,19 @@ uint32_t smb2_unlink(struct smb2_context *smb2, const char *path)
                 return SMB2_STATUS_SOCKET_ERROR;
         }
 
+        fh = (struct smb2fh *)cb_data.ptr;
+        if (fh == NULL) {
+                smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
+                return cb_data.status;
+        }
+        smb2_close(smb2, fh);
         return cb_data.status;
 }
 
 uint32_t smb2_rmdir(struct smb2_context *smb2, const char *path)
 {
         struct sync_cb_data cb_data;
+        struct smb2fh *fh = NULL;
 
         cb_data.is_finished = 0;
 
@@ -426,12 +434,19 @@ uint32_t smb2_rmdir(struct smb2_context *smb2, const char *path)
                 return SMB2_STATUS_SOCKET_ERROR;
         }
 
+        fh = (struct smb2fh *)cb_data.ptr;
+        if (fh == NULL) {
+                smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
+                return cb_data.status;
+        }
+        smb2_close(smb2, fh);
         return cb_data.status;
 }
 
 uint32_t smb2_mkdir(struct smb2_context *smb2, const char *path)
 {
         struct sync_cb_data cb_data;
+        struct smb2fh *fh = NULL;
 
         cb_data.is_finished = 0;
 
@@ -439,10 +454,16 @@ uint32_t smb2_mkdir(struct smb2_context *smb2, const char *path)
                 smb2_set_error(smb2, "smb2_mkdir_async failed");
                 return SMB2_STATUS_PAYLOAD_FAILED;
         }
-
         if (wait_for_reply(smb2, &cb_data) < 0) {
                 return SMB2_STATUS_SOCKET_ERROR;
         }
+
+        fh = (struct smb2fh *)cb_data.ptr;
+        if (fh == NULL) {
+                smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
+                return cb_data.status;
+        }
+        smb2_close(smb2, fh);
 
         return cb_data.status;
 }
