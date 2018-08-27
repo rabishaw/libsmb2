@@ -563,21 +563,22 @@ static void
 smb2_async_cb(struct smb2_context *smb2, uint32_t status,
               void *command_data, void *private_data)
 {
+        uint32_t local_status = status;
         async_cb_data *async_data = private_data;
 
         if (async_data->cmd == SMB2_WRITE && status == SMB2_STATUS_END_OF_FILE) {
-                status = SMB2_STATUS_SUCCESS;
+                local_status = SMB2_STATUS_SUCCESS;
         }
         if (async_data->cmd == SMB2_READ && status == SMB2_STATUS_END_OF_FILE) {
-                status = SMB2_STATUS_SUCCESS;
+                local_status = SMB2_STATUS_SUCCESS;
         }
         if (async_data->cmd == SMB2_CLOSE && status == SMB2_STATUS_FILE_CLOSED) {
-                status = SMB2_STATUS_SUCCESS;
+                local_status = SMB2_STATUS_SUCCESS;
         }
 
         async_data->status = status;
 
-        if (status != SMB2_STATUS_SUCCESS) {
+        if (local_status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "%s:failed with (0x%08x) %s - %s",
                                smb2_cmd_to_str(async_data->cmd),
                                status, nterror_to_str(status),
@@ -625,8 +626,9 @@ smb2_async_cb(struct smb2_context *smb2, uint32_t status,
                     struct smb2_read_reply *rep = command_data;
                     struct smb2fh *fh = async_data->acb_data_U.fh;
                     fh->offset += rep->data_length;
-                    async_data->cb(smb2, rep->data_length,
-                                   NULL, async_data->cb_data);
+                    fh->byte_count = rep->data_length;
+                    fh->bytes_remaining = rep->data_remaining;
+                    async_data->cb(smb2, status, NULL, async_data->cb_data);
                     smb2_cleanup_cb_data(smb2, async_data);
             }
         break;
@@ -635,8 +637,9 @@ smb2_async_cb(struct smb2_context *smb2, uint32_t status,
                     struct smb2_write_reply *rep = command_data;
                     struct smb2fh *fh = async_data->acb_data_U.fh;
                     fh->offset += rep->count;
-                    async_data->cb(smb2, rep->count,
-                                   NULL, async_data->cb_data);
+                    fh->byte_count = rep->count;
+                    fh->bytes_remaining = rep->remaining;
+                    async_data->cb(smb2, status, NULL, async_data->cb_data);
                     smb2_cleanup_cb_data(smb2, async_data);
             }
         break;
