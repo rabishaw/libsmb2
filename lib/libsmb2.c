@@ -2020,6 +2020,12 @@ smb2_get_max_write_size(struct smb2_context *smb2)
         return smb2->max_write_size;
 }
 
+uint32_t
+smb2_get_max_transact_size(struct smb2_context *smb2)
+{
+        return smb2->max_transact_size;
+}
+
 static void
 ioctl_cb(struct smb2_context *smb2, uint32_t status,
          void *command_data, void *private_data)
