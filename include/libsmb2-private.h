@@ -244,10 +244,6 @@ uint64_t timeval_to_win(struct smb2_timeval *tv);
 void smb2_set_error(struct smb2_context *smb2, const char *error_string,
                     ...);
 
-void *smb2_alloc_init(struct smb2_context *smb2, size_t size);
-void *smb2_alloc_data(struct smb2_context *smb2, void *memctx, size_t size);
-void smb2_free_data(struct smb2_context *smb2, void *ptr);
-
 struct smb2_iovec *smb2_add_iovector(struct smb2_context *smb2,
                                      struct smb2_io_vectors *v,
                                      uint8_t *buf, int len,
@@ -329,12 +325,10 @@ int smb2_decode_fileidfulldirectoryinformation(
         struct smb2_iovec *vec);
 
 int smb2_decode_file_basic_info(struct smb2_context *smb2,
-                                void *memctx,
                                 struct smb2_file_basic_info *fs,
                                 struct smb2_iovec *vec);
 
 int smb2_decode_file_standard_info(struct smb2_context *smb2,
-                                   void *memctx,
                                    struct smb2_file_standard_info *fs,
                                    struct smb2_iovec *vec);
 
@@ -361,7 +355,6 @@ int smb2_decode_file_full_stream_info(struct smb2_context *smb2,
                                       struct smb2_iovec *vec);
 
 int smb2_decode_file_all_info(struct smb2_context *smb2,
-                              void *memctx,
                               struct smb2_file_all_info *fs,
                               struct smb2_iovec *vec);
 
@@ -373,23 +366,18 @@ uint32_t smb2_get_security_descriptor_size(const struct smb2_security_descriptor
 void print_security_descriptor(struct smb2_security_descriptor *sd);
 
 int smb2_decode_file_fs_size_info(struct smb2_context *smb2,
-                                  void *memctx,
                                   struct smb2_file_fs_size_info *fs,
                                   struct smb2_iovec *vec);
 int smb2_decode_file_fs_device_info(struct smb2_context *smb2,
-                                    void *memctx,
                                     struct smb2_file_fs_device_info *fs,
                                     struct smb2_iovec *vec);
 int smb2_decode_file_fs_control_info(struct smb2_context *smb2,
-                                     void *memctx,
                                      struct smb2_file_fs_control_info *fs,
                                      struct smb2_iovec *vec);
 int smb2_decode_file_fs_full_size_info(struct smb2_context *smb2,
-                                       void *memctx,
                                        struct smb2_file_fs_full_size_info *fs,
                                        struct smb2_iovec *vec);
 int smb2_decode_file_fs_sector_size_info(struct smb2_context *smb2,
-                                     void *memctx,
                                      struct smb2_file_fs_sector_size_info *fs,
                                      struct smb2_iovec *vec);
 

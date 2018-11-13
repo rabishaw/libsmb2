@@ -45,7 +45,6 @@
 
 int
 smb2_decode_file_basic_info(struct smb2_context *smb2,
-                            void *memctx,
                             struct smb2_file_basic_info *fs,
                             struct smb2_iovec *vec)
 {
@@ -70,7 +69,6 @@ smb2_decode_file_basic_info(struct smb2_context *smb2,
 
 int
 smb2_decode_file_standard_info(struct smb2_context *smb2,
-                               void *memctx,
                                struct smb2_file_standard_info *fs,
                                struct smb2_iovec *vec)
 {
@@ -115,8 +113,7 @@ smb2_decode_file_extended_info(struct smb2_context *smb2,
                 offset += full_ea_info.next_entry_offset;
                 if ( full_ea_info.next_entry_offset != 0 )
                 {
-                        next_node = smb2_alloc_init(smb2,
-                                            sizeof(struct smb2_file_extended_info));
+                        next_node = malloc(sizeof(struct smb2_file_extended_info));
                         if (next_node == NULL) {
                                 smb2_free_file_extended_info(smb2, info);
                                 smb2_set_error(smb2, "Failed to allocate "
@@ -270,11 +267,10 @@ smb2_decode_file_stream_info(struct smb2_context *smb2,
                 if ( full_stream_info.next_entry_offset != 0 )
                 {
                        size_t len = sizeof(struct smb2_file_stream_info);
-                       next_node = smb2_alloc_init(smb2, len);
+                       next_node = malloc(len);
                         if (next_node == NULL) {
                                 smb2_free_file_stream_info(smb2, info);
-                                smb2_set_error(smb2, "Failed to allocate "
-                                               "smb2_file_stream_info");
+                                smb2_set_error(smb2, "Failed to allocate smb2_file_stream_info");
                                 return -1;
                         }
                         memset(next_node, 0, len);
@@ -311,7 +307,6 @@ smb2_decode_file_full_stream_info(struct smb2_context *smb2,
 
 int
 smb2_decode_file_all_info(struct smb2_context *smb2,
-                          void *memctx,
                           struct smb2_file_all_info *fs,
                           struct smb2_iovec *vec)
 {
@@ -323,15 +318,15 @@ smb2_decode_file_all_info(struct smb2_context *smb2,
 
         v.buf = &vec->buf[0];
         v.len = 40;
-        smb2_decode_file_basic_info(smb2, memctx, &fs->basic, &v);
+        smb2_decode_file_basic_info(smb2, &fs->basic, &v);
 
         if (vec->len < 64) {
                 return -1;
         }
-        
+
         v.buf = &vec->buf[40];
         v.len = 24;
-        smb2_decode_file_standard_info(smb2, memctx, &fs->standard, &v);
+        smb2_decode_file_standard_info(smb2, &fs->standard, &v);
 
         smb2_get_uint64(vec, 64, &fs->index_number);
         smb2_get_uint32(vec, 72, &fs->ea_size);

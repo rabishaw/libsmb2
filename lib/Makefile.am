@@ -7,7 +7,6 @@ libsmb2_la_CPPFLAGS = -I$(abs_top_srcdir)/include \
 		      "-D_U_=__attribute__((unused))"
 
 libsmb2_la_SOURCES = \
-	alloc.c \
 	errors.c \
 	init.c \
 	hmac-md5.c \
@@ -36,7 +35,6 @@ libsmb2_la_SOURCES = \
 	smb2-data-file-info.c \
 	smb2-data-filesystem-info.c \
 	smb2-data-security-descriptor.c \
-	smb2-share-enum.c \
 	smb2-signing.c \
 	socket.c \
 	sync.c \

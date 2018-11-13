@@ -441,11 +441,11 @@ int main(int argc, char *argv[])
 
 
 
-        smb2_free_data(smb2, fs);
+        free(fs);
 
         smb2_disconnect_share(smb2);
         smb2_destroy_url(url);
         smb2_destroy_context(smb2);
-        
+
 	return 0;
 }

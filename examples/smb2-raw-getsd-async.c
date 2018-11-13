@@ -394,7 +394,7 @@ int main(int argc, char *argv[])
 
         sd = cb_data.ptr;
         print_security_descriptor(sd);
-        smb2_free_data(smb2, sd);
+        smb2_free_security_descriptor(smb2, sd);
 
         smb2_disconnect_share(smb2);
         smb2_destroy_url(url);

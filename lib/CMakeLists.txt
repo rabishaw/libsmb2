@@ -1,5 +1,4 @@
-set(SOURCES alloc.c
-            errors.c
+set(SOURCES errors.c
             init.c
             hmac-md5.c
             krb5-wrapper.c
@@ -27,7 +26,6 @@ set(SOURCES alloc.c
             smb2-data-file-info.c
             smb2-data-filesystem-info.c
             smb2-data-security-descriptor.c
-	    smb2-share-enum.c
             socket.c
             sync.c
             timestamps.c

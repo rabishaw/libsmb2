@@ -1538,7 +1538,7 @@ fstat_cb(struct smb2_context *smb2, uint32_t status,
         st->smb2_crtime_nsec = fs->basic.creation_time.tv_usec *
                 1000;
 
-        smb2_free_data(smb2, fs);
+        free(fs);
 
         stat_data->cb(smb2, SMB2_STATUS_SUCCESS, st, stat_data->cb_data);
         free(stat_data);
@@ -1725,7 +1725,7 @@ getinfo_query_cb(struct smb2_context *smb2, uint32_t status,
 
         getinfo_data->cb(smb2, SMB2_STATUS_SUCCESS, NULL, getinfo_data->cb_data);
         if (rep->output_buffer != NULL) {
-                smb2_free_data(smb2, rep->output_buffer); rep->output_buffer = NULL;
+                free(rep->output_buffer); rep->output_buffer = NULL;
         }
         return;
 }
@@ -2392,7 +2392,7 @@ void smb2_free_file_extended_info(struct smb2_context *smb2,
                 free(node->name);
                 free(node->value);
                 tmp_info = tmp_info->next;
-                smb2_free_data(smb2, node);
+                free(node);
         }
 }
 
@@ -2409,6 +2409,6 @@ void smb2_free_file_stream_info(struct smb2_context *smb2,
         while (tmp_info) {
                 struct smb2_file_stream_info *node = tmp_info;
                 tmp_info = tmp_info->next;
-                smb2_free_data(smb2, node);
+                free(node);
         }
 }
