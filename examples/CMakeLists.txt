@@ -16,8 +16,10 @@ set(SOURCES smb2-cat-async
             smb2-lookupsid)
 
 foreach(TARGET ${SOURCES})
-  add_executable(${TARGET} ${TARGET}.c)
+  add_executable(${TARGET} ${TARGET}.cpp)
   target_link_libraries(${TARGET} ${CORE_LIBRARIES})
+  target_link_libraries(${TARGET} smb2 gssapi_krb5 krb5)
+  link_directories("${CMAKE_BINARY_DIR}/lib")
   add_dependencies(${TARGET} smb2)
 endforeach()
 

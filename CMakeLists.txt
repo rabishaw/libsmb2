@@ -22,7 +22,33 @@ message("Build Architecture = " ${ARCH})
 include_directories("${PROJECT_SOURCE_DIR}/include")
 include_directories("${PROJECT_SOURCE_DIR}/include/smb2")
 
-add_subdirectory (lib)
+# check for the gssapi libraries and headers
+find_library(GSSAPI_LIBRARY NAMES gssapi_krb5)
+find_path(GSSAPI_INCLUDE_DIR NAMES gssapi.h gssapi/gssapi.h)
+
+if (GSSAPI_LIBRARY AND GSSAPI_INCLUDE_DIRS)
+  set(GSSAPI_FOUND TRUE)
+endif ()
+
+if(GSSAPI_FOUND)
+  set(GSSAPI_LIBRARIES ${GSSAPI_LIBRARY})
+  set(GSSAPI_INCLUDE_DIRS ${GSSAPI_INCLUDE_DIR})
+endif()
+
+set(core_DEPENDS ${GSSAPI_LIBRARIES} CACHE STRING "" FORCE)
+
+add_definitions(-DHAVE_LIBKRB5)
+#check for OpneSSL library
+find_package(OpenSSL REQUIRED)
+include_directories(${OPENSSL_INCLUDE_DIR})
+list(APPEND CORE_LIBRARIES ${OPENSSL_LIBRARIES})
+
+if(OPENSSL_FOUND)
+  add_definitions(-DHAVE_OPENSSL_LIBS)
+endif()
+
 if(ENABLE_EXAMPLES)
   add_subdirectory(examples)
 endif()
+
+add_subdirectory (lib)
