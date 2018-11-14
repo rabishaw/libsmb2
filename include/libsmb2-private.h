@@ -23,10 +23,6 @@
 #include "config.h"
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
@@ -385,9 +381,5 @@ int smb2_process_ioctl_fixed(struct smb2_context *smb2,
                              struct smb2_pdu *pdu);
 int smb2_process_ioctl_variable(struct smb2_context *smb2,
                                 struct smb2_pdu *pdu);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* !_LIBSMB2_PRIVATE_H_ */

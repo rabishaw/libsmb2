@@ -19,10 +19,6 @@
 #ifndef _LIBSMB2_RAW_H_
 #define _LIBSMB2_RAW_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*
  * Low level RAW SMB2 interface
  */
@@ -332,9 +328,5 @@ struct smb2_pdu *smb2_cmd_flush_async(struct smb2_context *smb2,
  struct smb2_pdu *smb2_cmd_ioctl_async(struct smb2_context *smb2,
                                        struct smb2_ioctl_request *req,
                                        smb2_command_cb cb, void *cb_data);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* !_LIBSMB2_RAW_H_ */

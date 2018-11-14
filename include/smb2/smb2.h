@@ -21,10 +21,6 @@
 
 #include "smb2-errors.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 struct smb2_timeval {
         uint32_t tv_sec;
         uint32_t tv_usec;
@@ -885,9 +881,5 @@ struct smb2_ioctl_reply {
         uint32_t reserved2;
         uint8_t* output_buffer;
 };
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* !_SMB2_H_ */

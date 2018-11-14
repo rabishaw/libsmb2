@@ -1,71 +1,34 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required (VERSION 2.6)
+project (libsmb2++)
 
-project(libsmb2
-        LANGUAGES C
-        VERSION 1.0.0)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-set(SOVERSION 1 CACHE STRING "" FORCE)
+#set the directory paths
+#set(RF_ROOT "$ENV{RF_ROOT}")
+#set(RF_COMMON          "${RF_ROOT}/common")
 
-set(INSTALL_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib" CACHE PATH "Installation directory for libraries")
-set(INSTALL_INC_DIR "${CMAKE_INSTALL_PREFIX}/include" CACHE PATH "Installation directory for headers")
-set(INSTALL_PKGCONFIG_DIR "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig" CACHE PATH "Installation directory for pkgconfig (.pc) files")
-set(INSTALL_CMAKE_DIR "${CMAKE_INSTALL_PREFIX}/lib/cmake/libsmb2" CACHE PATH "Installation directory for cmake (.cmake) files")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O2 -fshort-wchar -Werror -Wno-unused-but-set-variable -Wno-strict-aliasing")
 
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
-option(ENABLE_EXAMPLES "Build example programs" OFF)
+#not sure if it should be here
+add_definitions(-D_REENTRANT -DR_LINUX_3 -D_POSIX_PTHREAD_SEMANTICS -D_GNU_SOURCE=1)
 
-list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
+#get the target architecture
+# each output has a '\n' which needs to be truncated
+EXECUTE_PROCESS( COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE MARCH)
+EXECUTE_PROCESS( COMMAND uname -s COMMAND awk "{ print tolower($$1) }" COMMAND tr -d '\n' OUTPUT_VARIABLE OS)
+set(ARCH ${MARCH}-${OS})
 
-find_package(GSSAPI)
-find_package(OpenSSL)
+message( "Architecture = " ${ARCH} )
 
-if(GSSAPI_FOUND)
-  add_definitions(-DHAVE_LIBKRB5)
-endif()
+include_directories("${PROJECT_SOURCE_DIR}/include")
+include_directories("${PROJECT_SOURCE_DIR}/include/smb2")
 
-if(OPENSSL_FOUND)
-  add_definitions(-DHAVE_OPENSSL_LIBS)
-endif()
+set(LINUX_KERNEL_SOURCE_DIR "/usr/src/kernels/${LINUX_KERNEL_VERSION}-${MACH}")
 
-include(cmake/ConfigureChecks.cmake)
+EXECUTE_PROCESS(COMMAND xml2-config "--cflags" COMMAND sed "s/^.\\{2\\}//g" COMMAND tr -d '\n' OUTPUT_VARIABLE var)
+set(LIBXML2_INCLUDES ${var})
 
-include_directories(${CMAKE_CURRENT_BINARY_DIR}
-                    include
-                    include/smb2
-                    ${OPENSSL_INCLUDE_DIR})
+EXECUTE_PROCESS(COMMAND xml2-config "--libs" COMMAND sed "s/-l//g" COMMAND tr -d '\n' OUTPUT_VARIABLE var2)
+set(LIBXML2_LIBS ${var2})
 
-set(core_DEPENDS ${GSSAPI_LIBRARIES} CACHE STRING "" FORCE)
-
-if(CMAKE_SYSTEM_NAME MATCHES Windows)
-  list(APPEND CORE_LIBRARIES ws2_32.lib)
-  add_definitions(-DWIN32_LEAN_AND_MEAN -D_CRT_NONSTDC_NO_DEPRECATE -D_CRT_SECURE_NO_WARNINGS -DHAVE_SOCKADDR_IN6)
-  include_directories(include/msvc)
-elseif(CMAKE_SYSTEM_NAME STREQUAL Solaris)
-  find_library(SOCKET_LIBRARY socket)
-  find_library(NSL_LIBRARY nsl)
-  list(APPEND CORE_LIBRARIES ${SOCKET_LIBRARY} ${NSL_LIBRARY})
-endif()
-
-if(ENABLE_EXAMPLES)
-  add_subdirectory(examples)
-endif()
-
-add_subdirectory(lib)
-
-include(CMakePackageConfigHelpers)
-write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/libsmb2-config-version.cmake
-                                 VERSION ${PROJECT_VERSION}
-                                 COMPATIBILITY AnyNewerVersion)
-
-configure_file(cmake/libsmb2.pc.cmake
-               ${CMAKE_CURRENT_BINARY_DIR}/libsmb2.pc @ONLY)
-
-install(DIRECTORY include/smb2
-        DESTINATION ${INSTALL_INC_DIR})
-
-install(FILES cmake/FindSMB2.cmake
-              ${CMAKE_CURRENT_BINARY_DIR}/libsmb2-config-version.cmake
-        DESTINATION ${INSTALL_CMAKE_DIR})
-
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libsmb2.pc
-        DESTINATION ${INSTALL_PKGCONFIG_DIR})
+add_subdirectory (lib)

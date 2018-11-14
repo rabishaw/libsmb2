@@ -26,10 +26,6 @@
 #ifndef _GSSAPI_WRAPPER_H_
 #define _GSSAPI_WRAPPER_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 struct auth_data;
 
 struct auth_data *
@@ -48,9 +44,5 @@ void
 ntlmssp_destroy_context(struct auth_data *auth);
 
 int ntlmssp_get_session_key(struct auth_data *auth, uint8_t **key, uint8_t *key_size);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* _GSSAPI_WRAPPER_H_ */

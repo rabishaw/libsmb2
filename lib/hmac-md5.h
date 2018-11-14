@@ -13,17 +13,8 @@
 
 typedef uint32_t UWORD32;
 
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 void
 hmac_md5(unsigned char *text, int text_len, unsigned char *key, int key_len,
 	 unsigned char *digest);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* !HMAC_MD5_H */

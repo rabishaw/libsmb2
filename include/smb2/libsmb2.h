@@ -19,10 +19,6 @@
 #ifndef _LIBSMB2_H_
 #define _LIBSMB2_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 struct smb2_context;
 struct smb2_iovec;
 
@@ -1283,9 +1279,5 @@ int smb2_encode_security_descriptor(struct smb2_context *smb2,
 
 void smb2_free_security_descriptor(struct smb2_context *smb2,
                                    struct smb2_security_descriptor *sd);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* !_LIBSMB2_H_ */

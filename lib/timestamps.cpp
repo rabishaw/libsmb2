@@ -1,6 +1,6 @@
 /* -*-  mode:c; tab-width:8; c-basic-offset:8; indent-tabs-mode:nil;  -*- */
 /*
-   Copyright (C) 2018 by Ronnie Sahlberg <ronniesahlberg@gmail.com>
+   Copyright (C) 2016 by Ronnie Sahlberg <ronniesahlberg@gmail.com>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU Lesser General Public License as published by
@@ -19,28 +19,31 @@
 #include "config.h"
 #endif
 
-#ifdef HAVE_OPENSSL_LIBS
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
 
-#ifndef _SMB2_SIGNING_H_
-#define _SMB2_SIGNING_H_
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stddef.h>
 
-#include "slist.h"
-#include "smb2.h"
-#include "libsmb2.h"
-#include "libsmb2-raw.h"
+#include "portable-endian.h"
+
+#include <smb2.h>
+#include <libsmb2.h>
 #include "libsmb2-private.h"
 
-int
-smb2_pdu_add_signature(struct smb2_context *smb2,
-                       struct smb2_pdu *pdu);
+uint64_t
+timeval_to_win(struct smb2_timeval *tv)
+{
+        return ((uint64_t)tv->tv_sec * 10000000) +
+                116444736000000000 + tv->tv_usec * 10;
+}
 
-int
-smb2_pdu_check_signature(struct smb2_context *smb2,
-                         struct smb2_pdu *pdu);
-
-#endif /* _SMB2_SIGNING_H_ */
-#endif /* HAVE_OPENSSL_LIBS */
+void
+win_to_timeval(uint64_t smb2_time, struct smb2_timeval *tv)
+{
+        tv->tv_usec = (smb2_time / 10) % 1000000;
+        tv->tv_sec  = (smb2_time - 116444736000000000) / 10000000;
+}

@@ -10,10 +10,6 @@
 #ifndef _DCERPC_H_
 #define _DCERPC_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "portable-endian.h"
 
 #include <stdint.h>
@@ -362,10 +358,5 @@ lsarpc_parse_LookupNamesRes(struct smb2_context *smb2,
                             uint32_t             buffer_len,
                             uint8_t            **sid,
                             uint32_t            *status);
-
-#ifdef __cplusplus
-}
-#endif
-
 
 #endif /* _DCERPC_H_ */

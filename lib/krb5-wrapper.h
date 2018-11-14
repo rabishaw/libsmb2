@@ -26,10 +26,6 @@
 #ifndef _KRB5_WRAPPER_H_
 #define _KRB5_WRAPPER_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <gssapi/gssapi.h>
 
 static const gss_OID_desc gss_mech_spnego = {
@@ -83,9 +79,5 @@ krb5_session_request(struct smb2_context *smb2,
 void
 krb5_set_gss_error(struct smb2_context *smb2, char *func,
                    uint32_t maj, uint32_t min);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* _KRB5_WRAPPER_H_ */
