@@ -44,7 +44,7 @@ smb2_encode_read_request(struct smb2_context *smb2,
         struct smb2_iovec *iov;
 
         len = SMB2_READ_REQUEST_SIZE & 0xfffffffe;
-        buf = malloc(len);
+        buf = (uint8_t*)malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate read buffer");
                 return -1;
@@ -128,7 +128,7 @@ smb2_process_read_fixed(struct smb2_context *smb2,
         struct smb2_iovec *iov = &smb2->in.iov[smb2->in.niov - 1];
         uint16_t struct_size;
 
-        rep = malloc(sizeof(*rep));
+        rep = (struct smb2_read_reply *)malloc(sizeof(*rep));
         if (rep == NULL) {
                 smb2_set_error(smb2, "Failed to allocate read reply");
                 return -1;

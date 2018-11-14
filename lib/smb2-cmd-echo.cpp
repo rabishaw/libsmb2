@@ -42,7 +42,7 @@ smb2_encode_echo_request(struct smb2_context *smb2,
 
         len = 4;
 
-        buf = malloc(len);
+        buf = (uint8_t*)malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate echo buffer");
                 return -1;

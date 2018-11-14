@@ -44,7 +44,7 @@ smb2_encode_tree_connect_request(struct smb2_context *smb2,
         struct smb2_iovec *iov;
 
         len = SMB2_TREE_CONNECT_REQUEST_SIZE & 0xfffffffe;
-        buf = malloc(len);
+        buf = (uint8_t*)malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate tree connect setup "
                                "buffer");
@@ -62,7 +62,7 @@ smb2_encode_tree_connect_request(struct smb2_context *smb2,
 
 
         /* Path */
-        buf = malloc(req->path_length);
+        buf = (uint8_t*)malloc(req->path_length);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate tcon path");
                 return -1;
@@ -109,7 +109,7 @@ smb2_process_tree_connect_fixed(struct smb2_context *smb2,
         struct smb2_iovec *iov = &smb2->in.iov[smb2->in.niov - 1];
         uint16_t struct_size;
 
-        rep = malloc(sizeof(*rep));
+        rep = (struct smb2_tree_connect_reply *)malloc(sizeof(*rep));
         if (rep == NULL) {
                 smb2_set_error(smb2, "Failed to allocate tcon reply");
                 return -1;

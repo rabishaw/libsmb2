@@ -7,7 +7,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 #set(RF_ROOT "$ENV{RF_ROOT}")
 #set(RF_COMMON          "${RF_ROOT}/common")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O2 -fshort-wchar -Werror -Wno-unused-but-set-variable -Wno-strict-aliasing")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O2 -fshort-wchar -Werror -Wno-unused-but-set-variable -Wno-strict-aliasing -Wno-narrowing")
 
 #not sure if it should be here
 add_definitions(-D_REENTRANT -DR_LINUX_3 -D_POSIX_PTHREAD_SEMANTICS -D_GNU_SOURCE=1)

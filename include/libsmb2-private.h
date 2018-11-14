@@ -23,6 +23,8 @@
 #include "config.h"
 #endif
 
+#include <vector>
+
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
@@ -132,7 +134,7 @@ struct smb2_context {
         smb2_command_cb connect_cb;
         void *connect_data;
 
-        int credits;
+        uint32_t credits;
 
         char client_guid[16];
 

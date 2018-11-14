@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <string>
 
 #include <krb5/krb5.h>
 #include <gssapi/gssapi_krb5.h>
@@ -43,6 +44,22 @@
 #include "libsmb2-private.h"
 
 #include "krb5-wrapper.h"
+
+std::string gss_mech_spnego_str     = std::string ("\x2b\x06\x01\x05\x05\x02");
+std::string spnego_mech_krb5_str    = std::string ("\x2a\x86\x48\x86\xf7\x12\x01\x02\x02");
+std::string spnego_mech_ntlmssp_str = std::string ("\x2b\x06\x01\x04\x01\x82\x37\x02\x02\x0a");
+
+static const gss_OID_desc gss_mech_spnego = {
+    6, (void*)&gss_mech_spnego_str[0]
+};
+
+static const gss_OID_desc spnego_mech_krb5 = {
+    9, (void*)&spnego_mech_krb5_str[0]
+};
+
+static const gss_OID_desc spnego_mech_ntlmssp = {
+   10, (void*)&spnego_mech_ntlmssp_str[0]
+};
 
 void
 krb5_free_auth_data(struct private_auth_data *auth)
@@ -83,6 +100,7 @@ display_status(int type, uint32_t err)
         msg = NULL;
         msg_ctx = 0;
         do {
+                int ret =0;
                 maj = gss_display_status(&min, err, type,
                                          GSS_C_NO_OID, &msg_ctx, &text);
                 if (maj != GSS_S_COMPLETE) {
@@ -92,13 +110,13 @@ display_status(int type, uint32_t err)
                 tmp = NULL;
                 if (msg) {
                         tmp = msg;
-                        min = asprintf(&msg, "%s, %*s", msg,
+                        ret = asprintf(&msg, "%s, %*s", msg,
                                        (int)text.length, (char *)text.value);
                 } else {
-                        min = asprintf(&msg, "%*s", (int)text.length,
+                        ret = asprintf(&msg, "%*s", (int)text.length,
                                        (char *)text.value);
                 }
-                if (min == -1) return tmp;
+                if (ret == -1) return tmp;
                 free(tmp);
                 gss_release_buffer(&min, &text);
         } while (msg_ctx != 0);
@@ -142,7 +160,7 @@ krb5_negotiate_reply(struct smb2_context *smb2,
                 }
         }
 
-        auth_data = malloc(sizeof(struct private_auth_data));
+        auth_data = (struct private_auth_data *)malloc(sizeof(struct private_auth_data));
         if (auth_data == NULL) {
                 smb2_set_error(smb2, "Failed to allocate private_auth_data");
                 return NULL;
@@ -162,7 +180,8 @@ krb5_negotiate_reply(struct smb2_context *smb2,
                               &auth_data->target_name);
 
         if (maj != GSS_S_COMPLETE) {
-                krb5_set_gss_error(smb2, "gss_import_name", maj, min);
+                std::string error = std::string("gss_import_name");
+                krb5_set_gss_error(smb2, (char *)&error[0], maj, min);
                 return NULL;
         }
 
@@ -185,7 +204,8 @@ krb5_negotiate_reply(struct smb2_context *smb2,
                               &auth_data->user_name);
 
         if (maj != GSS_S_COMPLETE) {
-                krb5_set_gss_error(smb2, "gss_import_name", maj, min);
+                std::string error = std::string("gss_import_name");
+                krb5_set_gss_error(smb2, (char *)&error[0], maj, min);
                 return NULL;
         }
 
@@ -196,7 +216,7 @@ krb5_negotiate_reply(struct smb2_context *smb2,
 
         /* Create creds for the user */
         mechOidSet.count = 1;
-        mechOidSet.elements = discard_const(&gss_mech_spnego);
+        mechOidSet.elements = (gss_OID)discard_const(&gss_mech_spnego);
 
         if (smb2->use_cached_creds) {
                 krb5_error_code ret = 0;
@@ -223,7 +243,8 @@ krb5_negotiate_reply(struct smb2_context *smb2,
 
                 maj = gss_krb5_ccache_name(&min, cname, NULL);
                 if (maj != GSS_S_COMPLETE) {
-                        krb5_set_gss_error(smb2, "gss_krb5_ccache_name", maj, min);
+                        std::string error = std::string("gss_krb5_ccache_name");
+                        krb5_set_gss_error(smb2, (char*)&error[0], maj, min);
                         return NULL;
                 }
 
@@ -241,21 +262,23 @@ krb5_negotiate_reply(struct smb2_context *smb2,
         }
 
         if (maj != GSS_S_COMPLETE) {
-                krb5_set_gss_error(smb2, "gss_acquire_cred", maj, min);
+                std::string error = std::string("gss_acquire_cred");
+                krb5_set_gss_error(smb2, (char*)&error[0], maj, min);
                 return NULL;
         }
 
         if (smb2->sec != SMB2_SEC_UNDEFINED) {
                 wantMech.count = 1;
                 if (smb2->sec == SMB2_SEC_KRB5) {
-                        wantMech.elements = discard_const(&spnego_mech_krb5);
+                        wantMech.elements = (gss_OID)discard_const(&spnego_mech_krb5);
                 } else if (smb2->sec == SMB2_SEC_NTLMSSP) {
-                        wantMech.elements = discard_const(&spnego_mech_ntlmssp);
+                        wantMech.elements = (gss_OID)discard_const(&spnego_mech_ntlmssp);
                 }
 
                 maj = gss_set_neg_mechs(&min, auth_data->cred, &wantMech);
                 if (GSS_ERROR(maj)) {
-                        krb5_set_gss_error(smb2, "gss_set_neg_mechs", maj, min);
+                        std::string error = std::string("gss_set_neg_mechs");
+                        krb5_set_gss_error(smb2, (char*)&error[0], maj, min);
                         return NULL;
                 }
         }
@@ -282,8 +305,8 @@ krb5_session_get_session_key(struct smb2_context *smb2,
                            GSS_C_INQ_SSPI_SESSION_KEY,
                            &sessionKey);
         if (gssMajor != GSS_S_COMPLETE) {
-                krb5_set_gss_error(smb2, "gss_inquire_sec_context_by_oid",
-                                   gssMajor, gssMinor);
+                std::string error = std::string("gss_inquire_sec_context_by_oid");
+                krb5_set_gss_error(smb2, (char*)&error[0], gssMajor, gssMinor);
                 return -1;
         }
 
@@ -339,7 +362,7 @@ krb5_session_request(struct smb2_context *smb2,
         maj = gss_init_sec_context(&min, auth_data->cred,
                                    &auth_data->context,
                                    auth_data->target_name,
-                                   discard_const(auth_data->mech_type),
+                                   (gss_OID)discard_const(auth_data->mech_type),
                                    auth_data->req_flags,
                                    GSS_C_INDEFINITE,
                                    GSS_C_NO_CHANNEL_BINDINGS,
@@ -357,7 +380,8 @@ krb5_session_request(struct smb2_context *smb2,
             return 0;
         }
         if (GSS_ERROR(maj)) {
-                krb5_set_gss_error(smb2, "gss_init_sec_context", maj, min);
+                std::string error = std::string("gss_init_sec_context");
+                krb5_set_gss_error(smb2, (char*)&error[0], maj, min);
                 return -1;
         }
 
@@ -373,5 +397,5 @@ krb5_get_output_token_length(struct private_auth_data *auth_data)
 unsigned char *
 krb5_get_output_token_buffer(struct private_auth_data *auth_data)
 {
-        return auth_data->output_token.value;
+        return (unsigned char *)auth_data->output_token.value;
 }

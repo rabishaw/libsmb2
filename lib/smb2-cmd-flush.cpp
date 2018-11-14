@@ -44,7 +44,7 @@ smb2_encode_flush_request(struct smb2_context *smb2,
         struct smb2_iovec *iov;
 
         len = SMB2_FLUSH_REQUEST_SIZE & 0xfffffffe;
-        buf = malloc(len);
+        buf = (uint8_t*)malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate flush buffer");
                 return -1;

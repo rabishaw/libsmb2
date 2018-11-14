@@ -46,7 +46,7 @@ smb2_encode_ioctl_request(struct smb2_context *smb2,
         struct smb2_iovec *iov;
 
         len = SMB2_IOCTL_REQUEST_SIZE & 0xfffffffe;
-        buf = malloc(len);
+        buf = (uint8_t*)malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate ioctl param buffer");
                 return -1;
@@ -70,7 +70,7 @@ smb2_encode_ioctl_request(struct smb2_context *smb2,
         smb2_set_uint32(iov, 48, req->flags);
         smb2_set_uint32(iov, 52, req->reserved2);
 
-        buf = malloc(req->input_count);
+        buf = (uint8_t*)malloc(req->input_count);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate ioctl payload");
                 return -1;
@@ -127,7 +127,7 @@ smb2_process_ioctl_fixed(struct smb2_context *smb2,
         struct smb2_iovec *iov = &smb2->in.iov[smb2->in.niov - 1];
         uint16_t struct_size;
 
-        rep = malloc(sizeof(*rep));
+        rep = (struct smb2_ioctl_reply *)malloc(sizeof(*rep));
         if (rep == NULL) {
                 smb2_set_error(smb2, "Failed to allocate buffer for ioctl response");
                 return -1;
@@ -175,7 +175,7 @@ int
 smb2_process_ioctl_variable(struct smb2_context *smb2,
                                  struct smb2_pdu *pdu)
 {
-        struct smb2_ioctl_reply *rep = pdu->payload;
+        struct smb2_ioctl_reply *rep = (struct smb2_ioctl_reply *)pdu->payload;
         struct smb2_iovec *iov = &smb2->in.iov[smb2->in.niov - 1];
 
         rep->output_buffer = &iov->buf[IOV_OFFSET];

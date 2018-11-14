@@ -46,7 +46,7 @@ smb2_encode_negotiate_request(struct smb2_context *smb2,
         len = SMB2_NEGOTIATE_REQUEST_SIZE +
                 req->dialect_count * sizeof(uint16_t);
         len = PAD_TO_32BIT(len);
-        buf = malloc(len);
+        buf = (uint8_t*)malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate negotiate buffer");
                 return -1;
@@ -85,7 +85,7 @@ smb2_cmd_negotiate_async(struct smb2_context *smb2,
                 smb2_free_pdu(smb2, pdu);
                 return NULL;
         }
-        
+
         if (smb2_pad_to_64bit(smb2, &pdu->out) != 0) {
                 smb2_free_pdu(smb2, pdu);
                 return NULL;
@@ -105,13 +105,13 @@ smb2_process_negotiate_fixed(struct smb2_context *smb2,
         struct smb2_iovec *iov = &smb2->in.iov[smb2->in.niov - 1];
         uint16_t struct_size;
 
-        rep = malloc(sizeof(*rep));
+        rep = (struct smb2_negotiate_reply *)malloc(sizeof(*rep));
         if (rep == NULL) {
                 smb2_set_error(smb2, "Failed to allocate negotiate reply");
                 return -1;
         }
         pdu->payload = rep;
-               
+
         smb2_get_uint16(iov, 0, &struct_size);
         if (struct_size != SMB2_NEGOTIATE_REPLY_SIZE ||
             (struct_size & 0xfffe) != iov->len) {
@@ -121,7 +121,7 @@ smb2_process_negotiate_fixed(struct smb2_context *smb2,
                                (int)iov->len);
                 return -1;
         }
-        
+
         smb2_get_uint16(iov, 2, &rep->security_mode);
         smb2_get_uint16(iov, 4, &rep->dialect_revision);
         memcpy(rep->server_guid, iov->buf + 8, SMB2_GUID_SIZE);
@@ -156,7 +156,7 @@ int
 smb2_process_negotiate_variable(struct smb2_context *smb2,
                                 struct smb2_pdu *pdu)
 {
-        struct smb2_negotiate_reply *rep = pdu->payload;
+        struct smb2_negotiate_reply *rep = (struct smb2_negotiate_reply *)pdu->payload;
         struct smb2_iovec *iov = &smb2->in.iov[smb2->in.niov - 1];
 
         rep->security_buffer = &iov->buf[IOV_OFFSET];

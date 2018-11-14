@@ -28,18 +28,6 @@
 
 #include <gssapi/gssapi.h>
 
-static const gss_OID_desc gss_mech_spnego = {
-    6, "\x2b\x06\x01\x05\x05\x02"
-};
-
-static const gss_OID_desc spnego_mech_krb5 = {
-    9, "\x2a\x86\x48\x86\xf7\x12\x01\x02\x02"
-};
-
-static const gss_OID_desc spnego_mech_ntlmssp = {
-   10, "\x2b\x06\x01\x04\x01\x82\x37\x02\x02\x0a"
-};
-
 struct private_auth_data {
         gss_ctx_id_t context;
         gss_cred_id_t cred;

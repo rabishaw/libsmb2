@@ -59,11 +59,11 @@ struct smb2_pdu *
 smb2_allocate_pdu(struct smb2_context *smb2, enum smb2_command command,
                   smb2_command_cb cb, void *cb_data)
 {
-	struct smb2_pdu *pdu;
+        struct smb2_pdu *pdu;
         struct smb2_header *hdr;
         char magic[4] = {0xFE, 'S', 'M', 'B'};
-        
-        pdu = malloc(sizeof(struct smb2_pdu));
+
+        pdu = (struct smb2_pdu *)malloc(sizeof(struct smb2_pdu));
         if (pdu == NULL) {
                 smb2_set_error(smb2, "Failed to allocate pdu");
                 return NULL;
@@ -311,7 +311,7 @@ smb2_decode_header(struct smb2_context *smb2, struct smb2_iovec *iov,
                 smb2_get_uint32(iov, 32, &hdr->sync.process_id);
                 smb2_get_uint32(iov, 36, &hdr->sync.tree_id);
         }
-        
+
         smb2_get_uint64(iov, 40, &hdr->session_id);
         memcpy(&hdr->signature, iov->buf + 48, 16);
 

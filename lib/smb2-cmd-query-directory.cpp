@@ -90,7 +90,7 @@ smb2_encode_query_directory_request(struct smb2_context *smb2,
         struct smb2_iovec *iov;
 
         len = SMB2_QUERY_DIRECTORY_REQUEST_SIZE & 0xfffffffe;
-        buf = malloc(len);
+        buf = (uint8_t*)malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate query buffer");
                 return -1;
@@ -108,7 +108,7 @@ smb2_encode_query_directory_request(struct smb2_context *smb2,
                 }
                 smb2_set_uint16(iov, 26, 2 * name->len);
         }
-        
+
         smb2_set_uint16(iov, 0, SMB2_QUERY_DIRECTORY_REQUEST_SIZE);
         smb2_set_uint8(iov, 2, req->file_information_class);
         smb2_set_uint8(iov, 3, req->flags);
@@ -120,7 +120,7 @@ smb2_encode_query_directory_request(struct smb2_context *smb2,
 
         /* Name */
         if (name) {
-                buf = malloc(2 * name->len);
+                buf = (uint8_t*)malloc(2 * name->len);
                 if (buf == NULL) {
                         smb2_set_error(smb2, "Failed to allocate qdir name");
                         free(name);
@@ -133,7 +133,7 @@ smb2_encode_query_directory_request(struct smb2_context *smb2,
                                         free);
         }
         free(name);
-        
+
         return 0;
 }
 
@@ -179,7 +179,7 @@ smb2_process_query_directory_fixed(struct smb2_context *smb2,
         struct smb2_iovec *iov = &smb2->in.iov[smb2->in.niov - 1];
         uint16_t struct_size;
 
-        rep = malloc(sizeof(*rep));
+        rep = (struct smb2_query_directory_reply *)malloc(sizeof(*rep));
         if (rep == NULL) {
                 smb2_set_error(smb2, "Failed to allocate query dir reply");
                 return -1;
@@ -220,7 +220,7 @@ int
 smb2_process_query_directory_variable(struct smb2_context *smb2,
                                       struct smb2_pdu *pdu)
 {
-        struct smb2_query_directory_reply *rep = pdu->payload;
+        struct smb2_query_directory_reply *rep = (struct smb2_query_directory_reply *)pdu->payload;
         struct smb2_iovec *iov = &smb2->in.iov[smb2->in.niov - 1];
 
         rep->output_buffer = &iov->buf[IOV_OFFSET];

@@ -50,7 +50,7 @@
 
 #define CIFS_PORT 445
 
-static int
+static uint32_t
 smb2_get_credit_charge(struct smb2_context *smb2, struct smb2_pdu *pdu)
 {
         int credits = 0;
@@ -176,7 +176,7 @@ smb2_read_from_socket(struct smb2_context *smb2)
         struct iovec iov[SMB2_MAX_VECTORS];
         struct iovec *tmpiov;
         size_t num_done;
-	ssize_t count, len;
+        ssize_t count, len;
         int i, niov, is_chained;
         static char magic[4] = {0xFE, 'S', 'M', 'B'};
         struct smb2_pdu *pdu = smb2->pdu;
@@ -287,7 +287,7 @@ read_more_data:
 
                 smb2->recv_state = SMB2_RECV_FIXED;
                 smb2_add_iovector(smb2, &smb2->in,
-                                  malloc(len & 0xfffe),
+                                  (uint8_t*)malloc(len & 0xfffe),
                                   len & 0xfffe, free);
                 goto read_more_data;
         case SMB2_RECV_FIXED:
@@ -304,7 +304,7 @@ read_more_data:
                         for (i = 0; i < pdu->in.niov; i++) {
                                 size_t num = pdu->in.iov[i].len;
 
-                                if (num > len) {
+                                if ((int)num > len) {
                                         num = len;
                                 }
                                 smb2_add_iovector(smb2, &smb2->in,
@@ -320,7 +320,7 @@ read_more_data:
                         if (len > 0) {
                                 smb2->recv_state = SMB2_RECV_VARIABLE;
                                 smb2_add_iovector(smb2, &smb2->in,
-                                                  malloc(len),
+                                                  (uint8_t*)malloc(len),
                                                   len, free);
                                 goto read_more_data;
                         }
@@ -343,7 +343,7 @@ read_more_data:
                         /* Add padding before the next PDU */
                         smb2->recv_state = SMB2_RECV_PAD;
                         smb2_add_iovector(smb2, &smb2->in,
-                                          malloc(len),
+                                          (uint8_t*)malloc(len),
                                           len, free);
                         goto read_more_data;
                 }
@@ -376,7 +376,7 @@ read_more_data:
                         /* Add padding before the next PDU */
                         smb2->recv_state = SMB2_RECV_PAD;
                         smb2_add_iovector(smb2, &smb2->in,
-                                          malloc(len),
+                                          (uint8_t*)malloc(len),
                                           len, free);
                         goto read_more_data;
                 }

@@ -47,7 +47,7 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
         struct smb2_iovec *iov;
 
         len = SMB2_SET_INFO_REQUEST_SIZE & 0xfffffffe;
-        buf = malloc(len);
+        buf = (uint8_t*)malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate set info buffer");
                 return -1;
@@ -73,7 +73,7 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
                         len = 8;
                         smb2_set_uint32(iov, 4, len); /* buffer length */
 
-                        buf = malloc(len);
+                        buf = (uint8_t*)malloc(len);
                         if (buf == NULL) {
                                 smb2_set_error(smb2, "Failed to allocate setinfo EOF data buffer");
                                 return -1;
@@ -81,14 +81,14 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
                         memset(buf, 0, len);
                         iov = smb2_add_iovector(smb2, &pdu->out, buf, len, free);
 
-                        eofi = req->input_data;
+                        eofi = (struct smb2_file_end_of_file_info *)req->input_data;
                         smb2_set_uint64(iov, 0, eofi->end_of_file);
                 }
                 break;
                 case SMB2_FILE_RENAME_INFORMATION:
                 {
                         struct smb2_file_rename_info *rni;
-                        rni = req->input_data;
+                        rni = (struct smb2_file_rename_info *)req->input_data;
 
                         struct ucs2 *name = utf8_to_ucs2((char *)(rni->file_name));
                         if (name == NULL) {
@@ -106,7 +106,7 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
                         len = 20 + name->len * 2;
                         smb2_set_uint32(iov, 4, len); /* buffer length */
 
-                        buf = malloc(len);
+                        buf = (uint8_t*)malloc(len);
                         if (buf == NULL) {
                                 smb2_set_error(smb2, "Failed to allocate setinfo rename data buffer");
                                 free(name);
@@ -131,7 +131,7 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
                         len = sizeof(struct smb2_file_basic_info) + 4;
 
                         smb2_set_uint32(iov, 4, len); /* buffer length */
-                        buf = malloc(len);
+                        buf = (uint8_t*)malloc(len);
                         if (buf == NULL) {
                                 smb2_set_error(smb2, "Failed to allocate setinfo basic-info buffer");
                                 return -1;
@@ -161,7 +161,7 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
 
                         smb2_set_uint32(iov, 4, info->eabuf_len); /* buffer length */
 
-                        buf = malloc(info->eabuf_len);
+                        buf = (uint8_t*)malloc(info->eabuf_len);
                         if (buf == NULL) {
                                 smb2_set_error(smb2, "Failed to allocate set "
                                                      "info data buffer");
@@ -189,7 +189,7 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
 
                 smb2_set_uint32(iov, 4, info->secbuf_len); /* buffer length */
 
-                buf = malloc(info->secbuf_len);
+                buf = (uint8_t*)malloc(info->secbuf_len);
                 if (buf == NULL) {
                         smb2_set_error(smb2, "Failed to allocate setinfo security data buffer");
                         return -1;

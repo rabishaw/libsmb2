@@ -102,7 +102,7 @@ smb2_decode_file_extended_info(struct smb2_context *smb2,
                 offset += full_ea_info.next_entry_offset;
                 if ( full_ea_info.next_entry_offset != 0 )
                 {
-                        next_node = malloc(sizeof(struct smb2_file_extended_info));
+                        next_node = (struct smb2_file_extended_info*)malloc(sizeof(struct smb2_file_extended_info));
                         if (next_node == NULL) {
                                 smb2_free_file_extended_info(smb2, info);
                                 smb2_set_error(smb2, "Failed to allocate "
@@ -255,8 +255,8 @@ smb2_decode_file_stream_info(struct smb2_context *smb2,
                 offset += full_stream_info.next_entry_offset;
                 if ( full_stream_info.next_entry_offset != 0 )
                 {
-                       size_t len = sizeof(struct smb2_file_stream_info);
-                       next_node = malloc(len);
+                        size_t len = sizeof(struct smb2_file_stream_info);
+                        next_node = (struct smb2_file_stream_info *)malloc(len);
                         if (next_node == NULL) {
                                 smb2_free_file_stream_info(smb2, info);
                                 smb2_set_error(smb2, "Failed to allocate smb2_file_stream_info");

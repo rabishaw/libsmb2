@@ -47,7 +47,7 @@
 #endif // _MSC_VER
 
 static int
-smb2_parse_args(struct smb2_context *smb2, const char *args)
+smb2_parse_args(struct smb2_context *smb2, char *args)
 {
         while (args && *args != 0) {
                 char *next, *value;

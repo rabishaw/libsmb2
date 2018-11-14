@@ -291,7 +291,7 @@ decode_ace(struct smb2_context *smb2, struct smb2_iovec *vec)
                 ace->sid = decode_sid(smb2, &v);
 
                 ace->ad_len = v.len;
-                ace->ad_data = malloc(ace->ad_len);
+                ace->ad_data = (char*)malloc(ace->ad_len);
                 if (ace->ad_data == NULL) {
                         return NULL;
                 }
@@ -299,7 +299,7 @@ decode_ace(struct smb2_context *smb2, struct smb2_iovec *vec)
                 break;
         default:
                 ace->raw_len = v.len;
-                ace->raw_data = malloc(ace->raw_len);
+                ace->raw_data = (char*)malloc(ace->raw_len);
                 if (ace->raw_data == NULL) {
                         return NULL;
                 }

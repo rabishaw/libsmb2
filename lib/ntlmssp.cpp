@@ -49,8 +49,8 @@
 
 struct auth_data {
         unsigned char *buf;
-        int len;
-        int allocated;
+        uint64_t len;
+        uint64_t allocated;
 
         int neg_result;
         unsigned char *ntlm_buf;
@@ -99,7 +99,7 @@ ntlmssp_init_context(const char *user,
 {
         struct auth_data *auth_data = NULL;
 
-        auth_data = malloc(sizeof(struct auth_data));
+        auth_data = (struct auth_data *)malloc(sizeof(struct auth_data));
         if (auth_data == NULL) {
                 return NULL;
         }
@@ -119,13 +119,13 @@ ntlmssp_init_context(const char *user,
 static int
 encoder(const void *buffer, size_t size, void *ptr)
 {
-        struct auth_data *auth_data = ptr;
+        struct auth_data *auth_data = (struct auth_data *)ptr;
 
         if (size + auth_data->len > auth_data->allocated) {
                 unsigned char *tmp = auth_data->buf;
 
                 auth_data->allocated = 2 * ((size + auth_data->allocated + 256) & ~0xff);
-                auth_data->buf = malloc(auth_data->allocated);
+                auth_data->buf = (unsigned char*)malloc(auth_data->allocated);
                 if (auth_data->buf == NULL) {
                         free(tmp);
                         return -1;
@@ -174,7 +174,7 @@ ntlm_challenge_message(struct auth_data *auth_data, unsigned char *buf,
 {
         free(auth_data->ntlm_buf);
         auth_data->ntlm_len = len;
-        auth_data->ntlm_buf = malloc(auth_data->ntlm_len);
+        auth_data->ntlm_buf = (unsigned char*)malloc(auth_data->ntlm_len);
         if (auth_data->ntlm_buf == NULL) {
                 return -1;
         }
@@ -218,7 +218,7 @@ NTOWFv2(const char *user, const char *password, const char *domain,
         if (domain) {
                 len += strlen(domain);
         }
-        userdomain = malloc(len);
+        userdomain = (char*)malloc(len);
         if (userdomain == NULL) {
                 return -1;
         }
