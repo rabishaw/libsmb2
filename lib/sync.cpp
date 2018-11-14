@@ -48,7 +48,7 @@ static void
 sync_cb(struct smb2_context *smb2, uint32_t status,
         void *command_data, void *private_data)
 {
-        struct sync_cb_data *cb_data = private_data;
+        struct sync_cb_data *cb_data = (struct sync_cb_data *)private_data;
 
         cb_data->is_finished = 1;
         cb_data->status = status;
@@ -170,7 +170,7 @@ smb2dir *smb2_querydir(struct smb2_context *smb2,
 
         smb2_set_ntstatus(smb2, cb_data.status);
 
-        return cb_data.ptr;
+        return (smb2dir *)cb_data.ptr;
 }
 
 /*
@@ -212,7 +212,7 @@ smb2_open_file(struct smb2_context *smb2,
 
         smb2_set_ntstatus(smb2, cb_data.status);
 
-        return cb_data.ptr;
+        return (struct smb2fh *)cb_data.ptr;
 }
 
 struct smb2fh *smb2_open(struct smb2_context *smb2, const char *path, int flags)
@@ -232,7 +232,7 @@ struct smb2fh *smb2_open(struct smb2_context *smb2, const char *path, int flags)
 
         smb2_set_ntstatus(smb2, cb_data.status);
 
-        return cb_data.ptr;
+        return (struct smb2fh *)cb_data.ptr;
 }
 
 /* open_pipe()
@@ -259,7 +259,7 @@ struct smb2fh *smb2_open_pipe(struct smb2_context *smb2, const char *pipe)
 
         smb2_set_ntstatus(smb2, cb_data.status);
 
-        return cb_data.ptr;
+        return (struct smb2fh *)cb_data.ptr;
 }
 
 /*
@@ -742,7 +742,7 @@ uint32_t smb2_rename(struct smb2_context *smb2,
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_RENAME_INFORMATION;
         info.u_info.rename_info.replace_if_exist = 0;
-        info.u_info.rename_info.file_name = discard_const(newpath);
+        info.u_info.rename_info.file_name = (uint8_t*)discard_const(newpath);
 
         if (smb2_setinfo_async(smb2, oldpath, &info, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_rename  failed");

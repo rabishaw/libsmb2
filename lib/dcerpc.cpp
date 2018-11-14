@@ -497,7 +497,7 @@ srvsvc_parse_NetrShareEnum_buffer(struct smb2_context *smb2,
         uint32_t buffer_offset = 0;
         const uint8_t *payload = NULL;
         uint32_t payload_offset = 0;
-        int i = 0;
+        uint32_t i = 0;
 
         buffer = in_buffer + buffer_consumed;
         payload = buffer + (share_count * sizeof (struct ShareInfo1));
@@ -611,7 +611,7 @@ srvsvc_parse_NetrShareEnum_buffer2(struct smb2_context *smb2,
         uint32_t buffer_offset = 0;
         const uint8_t *payload = NULL;
         uint32_t payload_offset = 0;
-        int i = 0;
+        uint32_t i = 0;
 
         buffer = in_buffer + buffer_consumed;
         payload = buffer + (share_count * sizeof (struct ShareInfo2));

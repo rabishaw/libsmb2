@@ -94,7 +94,7 @@ validate_utf8_str(const char *utf8)
         const char *u = utf8;
         int i = 0;
         uint16_t cp;
-        
+
         while (*u) {
                 if (validate_utf8_cp(&u, &cp) < 0) {
                         return -1;
@@ -116,7 +116,7 @@ utf8_to_ucs2(const char *utf8)
                 return NULL;
         }
 
-        ucs2 = malloc(offsetof(struct ucs2, val) + 2 * len);
+        ucs2 = (struct ucs2 *)malloc(offsetof(struct ucs2, val) + 2 * len);
         if (ucs2 == NULL) {
                 return NULL;
         }
@@ -126,7 +126,7 @@ utf8_to_ucs2(const char *utf8)
                 validate_utf8_cp(&utf8, &ucs2->val[i]);
                 ucs2->val[i] = htole32(ucs2->val[i]);
         }
-        
+
         return ucs2;
 }
 
@@ -156,7 +156,7 @@ ucs2_to_utf8(const uint16_t *ucs2, int ucs2_len)
         for (i = 0; i < ucs2_len; i++) {
                 utf8_len += ucs2_cp_size(ucs2[i]);
         }
-        str = tmp = malloc(utf8_len);
+        str = tmp = (char*)malloc(utf8_len);
         if (str == NULL) {
                 return NULL;
         }
