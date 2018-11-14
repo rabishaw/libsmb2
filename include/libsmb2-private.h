@@ -65,7 +65,7 @@ struct smb2_sync {
         uint32_t process_id;
         uint32_t tree_id;
 };
-        
+
 struct smb2_header {
         uint8_t protocol_id[4];
         uint16_t struct_size;
@@ -227,7 +227,7 @@ struct ucs2 {
  * the ucs2 string.
  */
 struct ucs2 *utf8_to_ucs2(const char *utf8);
-        
+
 /* Returns a string converted to UTF8 format. Use free() to release
  * the utf8 string.
  */

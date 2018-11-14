@@ -321,7 +321,7 @@ smb2_decode_header(struct smb2_context *smb2, struct smb2_iovec *iov,
 static void
 smb2_add_to_outqueue(struct smb2_context *smb2, struct smb2_pdu *pdu)
 {
-        SMB2_LIST_ADD_END(&smb2->outqueue, pdu);
+        SMB2_LIST_ADD_END(&smb2->outqueue, pdu, struct smb2_pdu);
 }
 
 void

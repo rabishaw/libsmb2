@@ -24,11 +24,11 @@
 		(*list) = (item);				\
 	} while (0);
 
-#define SMB2_LIST_ADD_END(list, item)	\
+#define SMB2_LIST_ADD_END(list, item, type)	\
 	if ((*list) == NULL) {	 				\
 	   SMB2_LIST_ADD((list), (item));			\
 	} else {						\
-	   void *head = (*list);				\
+	   type *head = (*list);				\
 	   while ((*list)->next)				\
 	     (*list) = (*list)->next;				\
 	   (*list)->next = (item);				\
@@ -36,11 +36,11 @@
 	   (*list) = head;					\
 	}
 
-#define SMB2_LIST_REMOVE(list, item) \
+#define SMB2_LIST_REMOVE(list, item, type) \
 	if ((*list) == (item)) { 				\
 	   (*list) = (item)->next;				\
 	} else {						\
-	   void *head = (*list);				\
+	   type *head = (*list);				\
 	   while ((*list)->next && (*list)->next != (item))     \
 	     (*list) = (*list)->next;				\
 	   if ((*list)->next != NULL) {		    	    	\
@@ -49,10 +49,10 @@
 	   (*list) = head;					\
 	}
 
-#define SMB2_LIST_LENGTH(list, length) \
+#define SMB2_LIST_LENGTH(list, length, type) \
 	do { \
 	    (length) = 0; \
-		void *head = (*list); \
+		type *head = (*list); \
 		while ((*list)) { \
 			(*list) = (*list)->next; \
 			(length)++; \

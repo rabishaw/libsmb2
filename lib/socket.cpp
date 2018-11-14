@@ -146,11 +146,11 @@ smb2_write_to_socket(struct smb2_context *smb2)
                                        smb2_get_error(smb2));
                         return -1;
                 }
-                
+
                 pdu->out.num_done += count;
 
                 if (pdu->out.num_done == SMB2_SPL_SIZE + spl) {
-                        SMB2_LIST_REMOVE(&smb2->outqueue, pdu);
+                        SMB2_LIST_REMOVE(&smb2->outqueue, pdu, struct smb2_pdu);
                         while (pdu) {
                                 tmp_pdu = pdu->next_compound;
 
@@ -162,7 +162,7 @@ smb2_write_to_socket(struct smb2_context *smb2)
                                 pdu->next_compound = NULL;
                                 smb2->credits -= pdu->header.credit_charge;
 
-                                SMB2_LIST_ADD_END(&smb2->waitqueue, pdu);
+                                SMB2_LIST_ADD_END(&smb2->waitqueue, pdu, struct smb2_pdu);
                                 pdu = tmp_pdu;
                         }
                 }
@@ -277,7 +277,7 @@ read_more_data:
                         smb2_set_error(smb2, "no matching PDU found");
                         return -1;
                 }
-                SMB2_LIST_REMOVE(&smb2->waitqueue, pdu);
+                SMB2_LIST_REMOVE(&smb2->waitqueue, pdu, struct smb2_pdu);
 
                 len = smb2_get_fixed_size(smb2, pdu);
                 if (len < 0) {

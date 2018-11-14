@@ -569,7 +569,7 @@ srvsvc_parse_NetrShareEnum_buffer(struct smb2_context *smb2,
                 shi01->next = NULL;
 
                 /*add the entity */
-                SMB2_LIST_ADD_END(shares, shi01)
+                SMB2_LIST_ADD_END(shares, shi01, struct smb2_shareinfo)
         }
 
         buffer_offset += buffer_consumed + payload_offset;
@@ -735,7 +735,7 @@ srvsvc_parse_NetrShareEnum_buffer2(struct smb2_context *smb2,
                 shi01->next = NULL;
 
                 /*add the entity */
-                SMB2_LIST_ADD_END(shares, shi01)
+                SMB2_LIST_ADD_END(shares, shi01, struct smb2_shareinfo)
         }
 
         buffer_offset += buffer_consumed + payload_offset;

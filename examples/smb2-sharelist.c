@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
                         printf("%-30s %-11x %-100s\n", entry->info.info2.name, entry->info.info2.type, entry->info.info2.path);
                         free(entry->info.info2.name);free(entry->info.info2.remark); free(entry->info.info2.path);
                 }
-                SMB2_LIST_REMOVE(&shares, entry);
+                SMB2_LIST_REMOVE(&shares, entry, struct smb2_shareinfo);
                 free(entry);
                 entry = shares;
         }

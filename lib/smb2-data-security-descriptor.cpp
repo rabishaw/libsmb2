@@ -377,7 +377,7 @@ decode_acl(struct smb2_context *smb2, struct smb2_iovec *vec)
                 v.len -= ace->ace_size;
                 v.buf = &v.buf[ace->ace_size];
 
-                SMB2_LIST_ADD_END(&acl->aces, ace);
+                SMB2_LIST_ADD_END(&acl->aces, ace, struct smb2_ace);
         }
 
         return acl;
