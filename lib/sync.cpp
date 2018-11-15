@@ -45,770 +45,755 @@ struct sync_cb_data {
 };
 
 static void
-sync_cb(struct smb2_context *smb2, uint32_t status,
-        void *command_data, void *private_data)
+sync_cb(smb2_context *smb2, uint32_t status, void *command_data, void *private_data)
 {
-        struct sync_cb_data *cb_data = (struct sync_cb_data *)private_data;
-
-        cb_data->is_finished = 1;
-        cb_data->status = status;
-        cb_data->ptr = command_data;
+    sync_cb_data *cb_data = (sync_cb_data *)private_data;
+    cb_data->is_finished = 1;
+    cb_data->status = status;
+    cb_data->ptr = command_data;
 }
 
-static int wait_for_reply(struct smb2_context *smb2,
-                          struct sync_cb_data *cb_data)
+static int
+wait_for_reply(smb2_context *smb2, sync_cb_data *cb_data)
 {
-        while (!cb_data->is_finished) {
-                struct pollfd pfd;
+    while (!cb_data->is_finished) {
+        struct pollfd pfd;
 
-                pfd.fd = smb2_get_fd(smb2);
-                pfd.events = smb2_which_events(smb2);
+        pfd.fd = smb2_get_fd(smb2);
+        pfd.events = smb2_which_events(smb2);
 
-                if (poll(&pfd, 1, 1000) < 0) {
-                        smb2_set_error(smb2, "Poll failed");
-                        return -1;
-                }
-                if (pfd.revents == 0) {
-                        continue;
-                }
-                if (smb2_service(smb2, pfd.revents) < 0) {
-                        smb2_set_error(smb2, "smb2_service failed with : "
-                                       "%s\n", smb2_get_error(smb2));
-                        return -1;
-                }
+        if (poll(&pfd, 1, 1000) < 0) {
+            smb2_set_error(smb2, "Poll failed");
+            return -1;
         }
+        if (pfd.revents == 0) {
+            continue;
+        }
+        if (smb2_service(smb2, pfd.revents) < 0) {
+            smb2_set_error(smb2, "smb2_service failed with : %s\n", smb2_get_error(smb2));
+            return -1;
+        }
+    }
 
-        return 0;
+    return 0;
 }
 
 /*
  * Connect to the server and mount the share.
  */
 uint32_t
-smb2_connect_share(struct smb2_context *smb2,
+smb2_connect_share(smb2_context *smb2,
                    const char *server,
                    const char *share,
                    const char *user)
 {
-        struct sync_cb_data cb_data;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        cb_data.is_finished = 0;
+    if (smb2_connect_share_async(smb2, server, share, user, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_connect_share_async failed. %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (smb2_connect_share_async(smb2, server, share, user,
-                                     sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_connect_share_async failed. %s",
-                               smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
+    return cb_data.status;
 }
 
 /*
  * Disconnect from share
  */
 uint32_t
-smb2_disconnect_share(struct smb2_context *smb2)
+smb2_disconnect_share(smb2_context *smb2)
 {
-        struct sync_cb_data cb_data;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        cb_data.is_finished = 0;
+    if (smb2_disconnect_share_async(smb2, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_disconnect_share_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (smb2_disconnect_share_async(smb2, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_disconnect_share_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
+    return cb_data.status;
 }
 
 /*
  * opendir()
  */
-smb2dir *smb2_querydir(struct smb2_context *smb2,
-                       const char *path,
-                       const char *pattern)
+smb2dir *
+smb2_querydir(smb2_context *smb2,
+              const char *path,
+              const char *pattern)
 {
-        struct sync_cb_data cb_data;
-        struct smb2fh *fh = NULL;
+    sync_cb_data cb_data;
+    smb2fh *fh = NULL;
 
-        cb_data.is_finished = 0;
+    cb_data.is_finished = 0;
 
-        if (path == NULL) {
-                path = "";
-        }
+    if (path == NULL) {
+        path = "";
+    }
 
-        fh = smb2_open_file(smb2, path, 0, 0,
-                            SMB2_FILE_LIST_DIRECTORY | SMB2_FILE_READ_ATTRIBUTES,
-                            SMB2_FILE_ATTRIBUTE_DIRECTORY,
-                            SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE,
-                            SMB2_FILE_OPEN,
-                            SMB2_FILE_DIRECTORY_FILE);
-        if (fh == NULL) {
-                smb2_set_error(smb2, "smb2_opendir failed - %s", smb2_get_error(smb2));
-                return NULL;
-        }
+    fh = smb2_open_file(smb2, path, 0, 0,
+                        SMB2_FILE_LIST_DIRECTORY | SMB2_FILE_READ_ATTRIBUTES,
+                        SMB2_FILE_ATTRIBUTE_DIRECTORY,
+                        SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE,
+                        SMB2_FILE_OPEN,
+                        SMB2_FILE_DIRECTORY_FILE);
+    if (fh == NULL) {
+        smb2_set_error(smb2, "smb2_opendir failed - %s", smb2_get_error(smb2));
+        return NULL;
+    }
 
-        if (smb2_querydir_async(smb2, fh, pattern, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_querydir_async failed");
-                return NULL;
-        }
+    if (smb2_querydir_async(smb2, fh, pattern, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_querydir_async failed");
+        return NULL;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return NULL;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return NULL;
+    }
 
-        smb2_close(smb2, fh);
+    smb2_close(smb2, fh);
 
-        smb2_set_ntstatus(smb2, cb_data.status);
+    smb2_set_ntstatus(smb2, cb_data.status);
 
-        return (smb2dir *)cb_data.ptr;
+    return (smb2dir *)cb_data.ptr;
 }
 
 /*
  * open()
  */
-struct smb2fh *
-smb2_open_file(struct smb2_context *smb2,
-               const char *path,
-               uint8_t  security_flags,
-               uint64_t smb_create_flags,
-               uint32_t desired_access,
-               uint32_t file_attributes,
-               uint32_t share_access,
-               uint32_t create_disposition,
-               uint32_t create_options
+smb2fh *
+smb2_open_file(smb2_context  *smb2,
+               const char    *path,
+               uint8_t        security_flags,
+               uint64_t       smb_create_flags,
+               uint32_t       desired_access,
+               uint32_t       file_attributes,
+               uint32_t       share_access,
+               uint32_t       create_disposition,
+               uint32_t       create_options
               )
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        if (smb2_open_file_async(smb2, path,
-                                 security_flags,
-                                 SMB2_IMPERSONATION_IMPERSONATION,
-                                 smb_create_flags,
-                                 desired_access,
-                                 file_attributes,
-                                 share_access,
-                                 create_disposition,
-                                 create_options,
-                                 sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_open_file_async failed. Error - %s",
-                               smb2_get_error(smb2));
-                return NULL;
-        }
+    if (smb2_open_file_async(smb2, path,
+                             security_flags,
+                             SMB2_IMPERSONATION_IMPERSONATION,
+                             smb_create_flags,
+                             desired_access,
+                             file_attributes,
+                             share_access,
+                             create_disposition,
+                             create_options,
+                             sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_open_file_async failed. Error - %s", smb2_get_error(smb2));
+        return NULL;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return NULL;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return NULL;
+    }
 
-        smb2_set_ntstatus(smb2, cb_data.status);
+    smb2_set_ntstatus(smb2, cb_data.status);
 
-        return (struct smb2fh *)cb_data.ptr;
+    return (smb2fh *)cb_data.ptr;
 }
 
-struct smb2fh *smb2_open(struct smb2_context *smb2, const char *path, int flags)
+smb2fh *
+smb2_open(smb2_context *smb2, const char *path, int flags)
 {
-        struct sync_cb_data cb_data;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        cb_data.is_finished = 0;
+    if (smb2_open_async(smb2, path, flags, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_open_async failed");
+        return NULL;
+    }
 
-        if (smb2_open_async(smb2, path, flags, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_open_async failed");
-                return NULL;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return NULL;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return NULL;
-        }
+    smb2_set_ntstatus(smb2, cb_data.status);
 
-        smb2_set_ntstatus(smb2, cb_data.status);
-
-        return (struct smb2fh *)cb_data.ptr;
+    return (smb2fh *)cb_data.ptr;
 }
 
 /* open_pipe()
  */
-struct smb2fh *smb2_open_pipe(struct smb2_context *smb2, const char *pipe)
+smb2fh *
+smb2_open_pipe(smb2_context *smb2, const char *pipe)
 {
-        struct   sync_cb_data cb_data;
-        cb_data.is_finished = 0;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        if (pipe == NULL) {
-                smb2_set_error(smb2, "smb2_open_pipe:no pipe path provided");
-                return NULL;
-        }
+    if (pipe == NULL) {
+        smb2_set_error(smb2, "smb2_open_pipe:no pipe path provided");
+        return NULL;
+    }
 
-        if (smb2_open_pipe_async(smb2, pipe, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_open_pipe_async failed : %s",
-                               smb2_get_error(smb2));
-                return NULL;
-        }
+    if (smb2_open_pipe_async(smb2, pipe, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_open_pipe_async failed : %s", smb2_get_error(smb2));
+        return NULL;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return NULL;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return NULL;
+    }
 
-        smb2_set_ntstatus(smb2, cb_data.status);
+    smb2_set_ntstatus(smb2, cb_data.status);
 
-        return (struct smb2fh *)cb_data.ptr;
+    return (smb2fh *)cb_data.ptr;
 }
 
 /*
  * close()
  */
-uint32_t smb2_close(struct smb2_context *smb2, struct smb2fh *fh)
+uint32_t
+smb2_close(smb2_context *smb2, smb2fh *fh)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        if (smb2_close_async(smb2, fh, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_close_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_close_async(smb2, fh, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_close_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
 /*
  * fsync()
  */
-uint32_t smb2_fsync(struct smb2_context *smb2, struct smb2fh *fh)
+uint32_t
+smb2_fsync(smb2_context *smb2, smb2fh *fh)
 {
-        struct sync_cb_data cb_data;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        cb_data.is_finished = 0;
+    if (smb2_fsync_async(smb2, fh, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_fsync_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (smb2_fsync_async(smb2, fh, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_fsync_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
+    return cb_data.status;
 }
 
 /*
  * pread()
  */
-uint32_t smb2_pread(struct smb2_context *smb2, struct smb2fh *fh,
-                    uint8_t *buf, uint32_t count, uint64_t offset)
+uint32_t
+smb2_pread(smb2_context *smb2, smb2fh *fh,
+           uint8_t *buf, uint32_t count, uint64_t offset)
 {
-        struct sync_cb_data cb_data;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        cb_data.is_finished = 0;
-        fh->byte_count = 0;
-        fh->bytes_remaining = 0;
+    fh->byte_count = 0;
+    fh->bytes_remaining = 0;
 
-        if (count ==0) {
-                /* don't send a 0 byte read, the server doesn't reply */
-                return SMB2_STATUS_SUCCESS;
-        }
+    if (count ==0) {
+        /* don't send a 0 byte read, the server doesn't reply */
+        return SMB2_STATUS_SUCCESS;
+    }
 
-        if (smb2_pread_async(smb2, fh, buf, count, offset,
-                             sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_pread_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_pread_async(smb2, fh, buf, count, offset, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_pread_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        return cb_data.status;
-}
-
-uint32_t smb2_pwrite(struct smb2_context *smb2, struct smb2fh *fh,
-                     uint8_t *buf, uint32_t count, uint64_t offset)
-{
-        struct sync_cb_data cb_data;
-
-        cb_data.is_finished = 0;
-        fh->byte_count = 0;
-        fh->bytes_remaining = 0;
-
-        if (count ==0) {
-                /* don't send a 0 byte write, the server doesn't reply */
-                return SMB2_STATUS_SUCCESS;
-        }
-
-        if (smb2_pwrite_async(smb2, fh, buf, count, offset,
-                              sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_pwrite_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
-}
-
-uint32_t smb2_read(struct smb2_context *smb2, struct smb2fh *fh,
-                   uint8_t *buf, uint32_t count)
-{
-        struct sync_cb_data cb_data;
-
-        cb_data.is_finished = 0;
-        fh->byte_count = 0;
-        fh->bytes_remaining = 0;
-
-        if (count ==0) {
-                /* don't send a 0 byte read, the server doesn't reply */
-                return SMB2_STATUS_SUCCESS;
-        }
-
-        if (smb2_read_async(smb2, fh, buf, count, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_read_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
-}
-
-uint32_t smb2_write(struct smb2_context *smb2, struct smb2fh *fh,
-                    uint8_t *buf, uint32_t count)
-{
-        struct sync_cb_data cb_data;
-
-        cb_data.is_finished = 0;
-        fh->byte_count = 0;
-        fh->bytes_remaining = 0;
-
-        if (count ==0) {
-                /* don't send a 0 byte write, the server doesn't reply */
-                return SMB2_STATUS_SUCCESS;
-        }
-
-        if (smb2_write_async(smb2, fh, buf, count, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_write_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
-}
-
-uint32_t smb2_unlink(struct smb2_context *smb2, const char *path)
-{
-        struct sync_cb_data cb_data;
-        struct smb2fh *fh = NULL;
-
-        cb_data.is_finished = 0;
-
-        if (smb2_unlink_async(smb2, path, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_unlink_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        fh = (struct smb2fh *)cb_data.ptr;
-        if (fh == NULL) {
-                smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
-                return cb_data.status;
-        }
-        smb2_close(smb2, fh);
-        return cb_data.status;
-}
-
-uint32_t smb2_rmdir(struct smb2_context *smb2, const char *path)
-{
-        struct sync_cb_data cb_data;
-        struct smb2fh *fh = NULL;
-
-        cb_data.is_finished = 0;
-
-        if (smb2_rmdir_async(smb2, path, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_rmdir_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        fh = (struct smb2fh *)cb_data.ptr;
-        if (fh == NULL) {
-                smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
-                return cb_data.status;
-        }
-        smb2_close(smb2, fh);
-        return cb_data.status;
-}
-
-uint32_t smb2_mkdir(struct smb2_context *smb2, const char *path)
-{
-        struct sync_cb_data cb_data;
-        struct smb2fh *fh = NULL;
-
-        cb_data.is_finished = 0;
-
-        if (smb2_mkdir_async(smb2, path, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_mkdir_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        fh = (struct smb2fh *)cb_data.ptr;
-        if (fh == NULL) {
-                smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
-                return cb_data.status;
-        }
-        smb2_close(smb2, fh);
-
-        return cb_data.status;
-}
-
-uint32_t smb2_fstat(struct smb2_context *smb2, struct smb2fh *fh,
-                    struct smb2_stat_64 *st)
-{
-        struct sync_cb_data cb_data;
-
-        cb_data.is_finished = 0;
-
-        if (smb2_fstat_async(smb2, fh, st, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_fstat_async failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
-}
-
-uint32_t smb2_stat(struct smb2_context *smb2, const char *path,
-                   struct smb2_stat_64 *st)
-{
-        struct sync_cb_data cb_data;
-	    cb_data.is_finished = 0;
-        smb2_file_info info;
-
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_ALL_INFORMATION;
-
-        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        st->smb2_type = SMB2_TYPE_FILE;
-        if (info.u_info.all_info.basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
-                st->smb2_type = SMB2_TYPE_DIRECTORY;
-        }
-        st->smb2_nlink      = info.u_info.all_info.standard.number_of_links;
-        st->smb2_ino        = info.u_info.all_info.index_number;
-        st->smb2_size       = info.u_info.all_info.standard.end_of_file;
-        st->smb2_atime      = info.u_info.all_info.basic.last_access_time.tv_sec;
-        st->smb2_atime_nsec = info.u_info.all_info.basic.last_access_time.tv_usec * 1000;
-        st->smb2_mtime      = info.u_info.all_info.basic.last_write_time.tv_sec;
-        st->smb2_mtime_nsec = info.u_info.all_info.basic.last_write_time.tv_usec * 1000;
-        st->smb2_ctime      = info.u_info.all_info.basic.change_time.tv_sec;
-        st->smb2_ctime_nsec = info.u_info.all_info.basic.change_time.tv_usec * 1000;
-        st->smb2_crtime      = info.u_info.all_info.basic.creation_time.tv_sec;
-        st->smb2_crtime_nsec = info.u_info.all_info.basic.creation_time.tv_usec * 1000;
-
-        return cb_data.status;
-}
-
-uint32_t smb2_statvfs(struct smb2_context *smb2, const char *path,
-                      struct smb2_statvfs *st)
-{
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
-
-        info.info_type = SMB2_0_INFO_FILESYSTEM;
-        info.file_info_class = SMB2_FILE_FS_FULL_SIZE_INFORMATION;
-
-        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        memset(st, 0, sizeof(struct smb2_statvfs));
-        st->f_bsize = st->f_frsize = info.u_info.fs_full_size_info.bytes_per_sector *
-                                     info.u_info.fs_full_size_info.sectors_per_allocation_unit;
-        st->f_blocks = info.u_info.fs_full_size_info.total_allocation_units;
-        st->f_bfree = st->f_bavail = info.u_info.fs_full_size_info.caller_available_allocation_units;
-
-        return cb_data.status;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_getinfo_all(struct smb2_context *smb2,
+smb2_pwrite(smb2_context *smb2, smb2fh *fh,
+            uint8_t *buf, uint32_t count, uint64_t offset)
+{
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+
+    fh->byte_count = 0;
+    fh->bytes_remaining = 0;
+
+    if (count ==0) {
+        /* don't send a 0 byte write, the server doesn't reply */
+        return SMB2_STATUS_SUCCESS;
+    }
+
+    if (smb2_pwrite_async(smb2, fh, buf, count, offset, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_pwrite_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    return cb_data.status;
+}
+
+uint32_t
+smb2_read(smb2_context *smb2, smb2fh *fh, uint8_t *buf, uint32_t count)
+{
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+
+    fh->byte_count = 0;
+    fh->bytes_remaining = 0;
+
+    if (count ==0) {
+        /* don't send a 0 byte read, the server doesn't reply */
+        return SMB2_STATUS_SUCCESS;
+    }
+
+    if (smb2_read_async(smb2, fh, buf, count, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_read_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    return cb_data.status;
+}
+
+uint32_t
+smb2_write(smb2_context *smb2, smb2fh *fh, uint8_t *buf, uint32_t count)
+{
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+
+    fh->byte_count = 0;
+    fh->bytes_remaining = 0;
+
+    if (count ==0) {
+        /* don't send a 0 byte write, the server doesn't reply */
+        return SMB2_STATUS_SUCCESS;
+    }
+
+    if (smb2_write_async(smb2, fh, buf, count, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_write_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    return cb_data.status;
+}
+
+uint32_t
+smb2_unlink(smb2_context *smb2, const char *path)
+{
+    sync_cb_data cb_data;
+    smb2fh *fh = NULL;
+
+    cb_data.is_finished = 0;
+
+    if (smb2_unlink_async(smb2, path, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_unlink_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    fh = (smb2fh *)cb_data.ptr;
+    if (fh == NULL) {
+        smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
+        return cb_data.status;
+    }
+    smb2_close(smb2, fh);
+    return cb_data.status;
+}
+
+uint32_t
+smb2_rmdir(smb2_context *smb2, const char *path)
+{
+    sync_cb_data cb_data;
+    smb2fh *fh = NULL;
+
+    cb_data.is_finished = 0;
+
+    if (smb2_rmdir_async(smb2, path, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_rmdir_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    fh = (smb2fh *)cb_data.ptr;
+    if (fh == NULL) {
+        smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
+        return cb_data.status;
+    }
+    smb2_close(smb2, fh);
+    return cb_data.status;
+}
+
+uint32_t
+smb2_mkdir(smb2_context *smb2, const char *path)
+{
+    sync_cb_data cb_data;
+    smb2fh *fh = NULL;
+
+    cb_data.is_finished = 0;
+
+    if (smb2_mkdir_async(smb2, path, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_mkdir_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    fh = (smb2fh *)cb_data.ptr;
+    if (fh == NULL) {
+        smb2_set_error(smb2, "smb2_mkdir failed - %s", smb2_get_error(smb2));
+        return cb_data.status;
+    }
+    smb2_close(smb2, fh);
+
+    return cb_data.status;
+}
+
+uint32_t
+smb2_fstat(smb2_context *smb2, smb2fh *fh, smb2_stat_64 *st)
+{
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+
+    if (smb2_fstat_async(smb2, fh, st, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_fstat_async failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    return cb_data.status;
+}
+
+uint32_t
+smb2_stat(smb2_context *smb2, const char *path, smb2_stat_64 *st)
+{
+    sync_cb_data cb_data;
+	cb_data.is_finished = 0;
+    smb2_file_info info;
+
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_ALL_INFORMATION;
+
+    if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    st->smb2_type = SMB2_TYPE_FILE;
+    if (info.u_info.all_info.basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
+        st->smb2_type = SMB2_TYPE_DIRECTORY;
+    }
+    st->smb2_nlink      = info.u_info.all_info.standard.number_of_links;
+    st->smb2_ino        = info.u_info.all_info.index_number;
+    st->smb2_size       = info.u_info.all_info.standard.end_of_file;
+    st->smb2_atime      = info.u_info.all_info.basic.last_access_time.tv_sec;
+    st->smb2_atime_nsec = info.u_info.all_info.basic.last_access_time.tv_usec * 1000;
+    st->smb2_mtime      = info.u_info.all_info.basic.last_write_time.tv_sec;
+    st->smb2_mtime_nsec = info.u_info.all_info.basic.last_write_time.tv_usec * 1000;
+    st->smb2_ctime      = info.u_info.all_info.basic.change_time.tv_sec;
+    st->smb2_ctime_nsec = info.u_info.all_info.basic.change_time.tv_usec * 1000;
+    st->smb2_crtime      = info.u_info.all_info.basic.creation_time.tv_sec;
+    st->smb2_crtime_nsec = info.u_info.all_info.basic.creation_time.tv_usec * 1000;
+
+    return cb_data.status;
+}
+
+uint32_t
+smb2_statvfs(smb2_context *smb2, const char *path, struct smb2_statvfs *st)
+{
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
+
+    info.info_type = SMB2_0_INFO_FILESYSTEM;
+    info.file_info_class = SMB2_FILE_FS_FULL_SIZE_INFORMATION;
+
+    if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
+
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
+
+    memset(st, 0, sizeof(struct smb2_statvfs));
+    st->f_bsize = st->f_frsize = info.u_info.fs_full_size_info.bytes_per_sector *
+                                 info.u_info.fs_full_size_info.sectors_per_allocation_unit;
+    st->f_blocks = info.u_info.fs_full_size_info.total_allocation_units;
+    st->f_bfree = st->f_bavail = info.u_info.fs_full_size_info.caller_available_allocation_units;
+
+    return cb_data.status;
+}
+
+uint32_t
+smb2_getinfo_all(smb2_context *smb2,
                  const char *path,
-                 struct smb2_file_info_all *all_info)
+                 smb2_file_info_all *all_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_ALL_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_ALL_INFORMATION;
 
-        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        all_info->smb2_type = SMB2_TYPE_FILE;
-        if (info.u_info.all_info.basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
-                all_info->smb2_type = SMB2_TYPE_DIRECTORY;
-        }
-        all_info->smb2_ino           = info.u_info.all_info.index_number;
-        all_info->ea_size            = info.u_info.all_info.ea_size;
+    all_info->smb2_type = SMB2_TYPE_FILE;
+    if (info.u_info.all_info.basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
+        all_info->smb2_type = SMB2_TYPE_DIRECTORY;
+    }
+    all_info->smb2_ino           = info.u_info.all_info.index_number;
+    all_info->ea_size            = info.u_info.all_info.ea_size;
 
-        all_info->smb2_atime         = info.u_info.all_info.basic.last_access_time.tv_sec;
-        all_info->smb2_atime_nsec    = info.u_info.all_info.basic.last_access_time.tv_usec * 1000;
-        all_info->smb2_mtime         = info.u_info.all_info.basic.last_write_time.tv_sec;
-        all_info->smb2_mtime_nsec    = info.u_info.all_info.basic.last_write_time.tv_usec * 1000;
-        all_info->smb2_ctime         = info.u_info.all_info.basic.change_time.tv_sec;
-        all_info->smb2_ctime_nsec    = info.u_info.all_info.basic.change_time.tv_usec * 1000;
-        all_info->smb2_crtime        = info.u_info.all_info.basic.creation_time.tv_sec;
-        all_info->smb2_crtime_nsec   = info.u_info.all_info.basic.creation_time.tv_usec * 1000;
-        all_info->file_attributes    = info.u_info.all_info.basic.file_attributes;
+    all_info->smb2_atime         = info.u_info.all_info.basic.last_access_time.tv_sec;
+    all_info->smb2_atime_nsec    = info.u_info.all_info.basic.last_access_time.tv_usec * 1000;
+    all_info->smb2_mtime         = info.u_info.all_info.basic.last_write_time.tv_sec;
+    all_info->smb2_mtime_nsec    = info.u_info.all_info.basic.last_write_time.tv_usec * 1000;
+    all_info->smb2_ctime         = info.u_info.all_info.basic.change_time.tv_sec;
+    all_info->smb2_ctime_nsec    = info.u_info.all_info.basic.change_time.tv_usec * 1000;
+    all_info->smb2_crtime        = info.u_info.all_info.basic.creation_time.tv_sec;
+    all_info->smb2_crtime_nsec   = info.u_info.all_info.basic.creation_time.tv_usec * 1000;
+    all_info->file_attributes    = info.u_info.all_info.basic.file_attributes;
 
-        all_info->smb2_size          = info.u_info.all_info.standard.end_of_file;
-        all_info->smb2_nlink         = info.u_info.all_info.standard.number_of_links;
-        all_info->allocation_size    = info.u_info.all_info.standard.allocation_size;
-        all_info-> end_of_file       = info.u_info.all_info.standard.end_of_file;
-        all_info-> delete_pending    = info.u_info.all_info.standard.delete_pending;
-        all_info-> directory         = info.u_info.all_info.standard.directory;
+    all_info->smb2_size          = info.u_info.all_info.standard.end_of_file;
+    all_info->smb2_nlink         = info.u_info.all_info.standard.number_of_links;
+    all_info->allocation_size    = info.u_info.all_info.standard.allocation_size;
+    all_info-> end_of_file       = info.u_info.all_info.standard.end_of_file;
+    all_info-> delete_pending    = info.u_info.all_info.standard.delete_pending;
+    all_info-> directory         = info.u_info.all_info.standard.directory;
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fgetinfo_all(struct smb2_context *smb2,
-                  struct smb2fh *fh,
-                  struct smb2_file_info_all *all_info)
+smb2_fgetinfo_all(smb2_context *smb2, smb2fh *fh, smb2_file_info_all *all_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_ALL_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_ALL_INFORMATION;
 
-        if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        all_info->smb2_type = SMB2_TYPE_FILE;
-        if (info.u_info.all_info.basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
-                all_info->smb2_type = SMB2_TYPE_DIRECTORY;
-        }
-        all_info->smb2_ino           = info.u_info.all_info.index_number;
-        all_info->ea_size            = info.u_info.all_info.ea_size;
+    all_info->smb2_type = SMB2_TYPE_FILE;
+    if (info.u_info.all_info.basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
+        all_info->smb2_type = SMB2_TYPE_DIRECTORY;
+    }
+    all_info->smb2_ino           = info.u_info.all_info.index_number;
+    all_info->ea_size            = info.u_info.all_info.ea_size;
 
-        all_info->smb2_atime         = info.u_info.all_info.basic.last_access_time.tv_sec;
-        all_info->smb2_atime_nsec    = info.u_info.all_info.basic.last_access_time.tv_usec * 1000;
-        all_info->smb2_mtime         = info.u_info.all_info.basic.last_write_time.tv_sec;
-        all_info->smb2_mtime_nsec    = info.u_info.all_info.basic.last_write_time.tv_usec * 1000;
-        all_info->smb2_ctime         = info.u_info.all_info.basic.change_time.tv_sec;
-        all_info->smb2_ctime_nsec    = info.u_info.all_info.basic.change_time.tv_usec * 1000;
-        all_info->smb2_crtime        = info.u_info.all_info.basic.creation_time.tv_sec;
-        all_info->smb2_crtime_nsec   = info.u_info.all_info.basic.creation_time.tv_usec * 1000;
-        all_info->file_attributes    = info.u_info.all_info.basic.file_attributes;
+    all_info->smb2_atime         = info.u_info.all_info.basic.last_access_time.tv_sec;
+    all_info->smb2_atime_nsec    = info.u_info.all_info.basic.last_access_time.tv_usec * 1000;
+    all_info->smb2_mtime         = info.u_info.all_info.basic.last_write_time.tv_sec;
+    all_info->smb2_mtime_nsec    = info.u_info.all_info.basic.last_write_time.tv_usec * 1000;
+    all_info->smb2_ctime         = info.u_info.all_info.basic.change_time.tv_sec;
+    all_info->smb2_ctime_nsec    = info.u_info.all_info.basic.change_time.tv_usec * 1000;
+    all_info->smb2_crtime        = info.u_info.all_info.basic.creation_time.tv_sec;
+    all_info->smb2_crtime_nsec   = info.u_info.all_info.basic.creation_time.tv_usec * 1000;
+    all_info->file_attributes    = info.u_info.all_info.basic.file_attributes;
 
-        all_info->smb2_size          = info.u_info.all_info.standard.end_of_file;
-        all_info->smb2_nlink         = info.u_info.all_info.standard.number_of_links;
-        all_info->allocation_size    = info.u_info.all_info.standard.allocation_size;
-        all_info-> end_of_file       = info.u_info.all_info.standard.end_of_file;
-        all_info-> delete_pending    = info.u_info.all_info.standard.delete_pending;
-        all_info-> directory         = info.u_info.all_info.standard.directory;
+    all_info->smb2_size          = info.u_info.all_info.standard.end_of_file;
+    all_info->smb2_nlink         = info.u_info.all_info.standard.number_of_links;
+    all_info->allocation_size    = info.u_info.all_info.standard.allocation_size;
+    all_info->end_of_file        = info.u_info.all_info.standard.end_of_file;
+    all_info->delete_pending     = info.u_info.all_info.standard.delete_pending;
+    all_info->directory          = info.u_info.all_info.standard.directory;
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_setinfo_basic(struct smb2_context *smb2,
-                   const char *path,
-                   struct smb2_file_basic_info *basic_info)
+smb2_setinfo_basic(smb2_context *smb2, const char *path, smb2_file_basic_info *basic_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        if (basic_info == NULL) {
-                smb2_set_error(smb2, "%s : no info to set");
-                return SMB2_STATUS_INVALID_ARGUMENT;
-        }
+    if (basic_info == NULL) {
+        smb2_set_error(smb2, "%s : no info to set");
+        return SMB2_STATUS_INVALID_ARGUMENT;
+    }
 
-        memset(&info, 0, sizeof(smb2_file_info));
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
-        info.u_info.basic_info = *basic_info;
+    memset(&info, 0, sizeof(smb2_file_info));
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
+    info.u_info.basic_info = *basic_info;
 
-        if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-		if (wait_for_reply(smb2, &cb_data) < 0) {
-				return SMB2_STATUS_SOCKET_ERROR;
-		}
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-		return cb_data.status;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fsetinfo_basic(struct smb2_context *smb2,
-                    struct smb2fh *fh,
-                    struct smb2_file_basic_info *basic_info)
+smb2_fsetinfo_basic(smb2_context *smb2, smb2fh *fh, smb2_file_basic_info *basic_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        if (basic_info == NULL) {
-                smb2_set_error(smb2, "%s : no info to set");
-                return SMB2_STATUS_INVALID_ARGUMENT;
-        }
+    if (basic_info == NULL) {
+        smb2_set_error(smb2, "%s : no info to set");
+        return SMB2_STATUS_INVALID_ARGUMENT;
+    }
 
-        memset(&info, 0, sizeof(smb2_file_info));
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
-        info.u_info.basic_info = *basic_info;
+    memset(&info, 0, sizeof(smb2_file_info));
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
+    info.u_info.basic_info = *basic_info;
 
-        if (smb2_fsetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_fsetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-		if (wait_for_reply(smb2, &cb_data) < 0) {
-				return SMB2_STATUS_SOCKET_ERROR;
-		}
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-		return cb_data.status;
+    return cb_data.status;
 }
 
-uint32_t smb2_rename(struct smb2_context *smb2,
-                     const char *oldpath,
-                     const char *newpath)
+uint32_t
+smb2_rename(smb2_context *smb2, const char *oldpath, const char *newpath)
 {
-        struct sync_cb_data cb_data;
-        smb2_file_info info;
-        cb_data.is_finished = 0;
+    sync_cb_data cb_data;
+    smb2_file_info info;
+    cb_data.is_finished = 0;
 
-        memset(&info, 0, sizeof(smb2_file_info));
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_RENAME_INFORMATION;
-        info.u_info.rename_info.replace_if_exist = 0;
-        info.u_info.rename_info.file_name = (uint8_t*)discard_const(newpath);
+    memset(&info, 0, sizeof(smb2_file_info));
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_RENAME_INFORMATION;
+    info.u_info.rename_info.replace_if_exist = 0;
+    info.u_info.rename_info.file_name = (uint8_t*)discard_const(newpath);
 
-        if (smb2_setinfo_async(smb2, oldpath, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_rename  failed");
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_setinfo_async(smb2, oldpath, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_rename  failed");
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
-uint32_t smb2_truncate(struct smb2_context *smb2,
-                       const char *path,
-                       uint64_t length)
+uint32_t
+smb2_truncate(smb2_context *smb2, const char *path, uint64_t length)
 {
-        struct sync_cb_data cb_data;
-        smb2_file_info info;
-        cb_data.is_finished = 0;
+    sync_cb_data cb_data;
+    smb2_file_info info;
+    cb_data.is_finished = 0;
 
-        memset(&info, 0, sizeof(smb2_file_info));
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_END_OF_FILE_INFORMATION;
-        info.u_info.eof_info.end_of_file = length;
+    memset(&info, 0, sizeof(smb2_file_info));
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_END_OF_FILE_INFORMATION;
+    info.u_info.eof_info.end_of_file = length;
 
-        if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_truncate failed. %s",
-                               smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_truncate failed. %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
-uint32_t smb2_ftruncate(struct smb2_context *smb2,
-                        struct smb2fh *fh,
-                        uint64_t length)
+uint32_t
+smb2_ftruncate(smb2_context *smb2, smb2fh *fh, uint64_t length)
 {
-        struct sync_cb_data cb_data;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        cb_data.is_finished = 0;
+    if (smb2_ftruncate_async(smb2, fh, length, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_ftruncate_async failed. %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (smb2_ftruncate_async(smb2, fh, length, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_ftruncate_async failed. %s",
-                               smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
+    return cb_data.status;
 }
 
 /*
  * Send SMB2_ECHO command to the server
  */
-uint32_t smb2_echo(struct smb2_context *smb2)
+uint32_t
+smb2_echo(smb2_context *smb2)
 {
-    struct sync_cb_data cb_data;
+    sync_cb_data cb_data;
 
     if (smb2->is_connected == 0)
     {
@@ -835,1119 +820,1054 @@ uint32_t smb2_echo(struct smb2_context *smb2)
 //#define DEBUG
 
 uint32_t
-smb2_get_security(struct smb2_context *smb2,
-                  const char *path,
-                  uint8_t **buf,
-                  uint32_t *buf_len)
+smb2_get_security(smb2_context *smb2, const char *path, uint8_t **buf, uint32_t *buf_len)
 {
-        int sts = 0;
-        struct sync_cb_data cb_data;
-        smb2_file_info info;
+    int sts = 0;
+    sync_cb_data cb_data;
+    smb2_file_info info;
 
-        uint8_t *relative_sec = NULL;
-        uint32_t relative_sec_size = 1024;
+    uint8_t *relative_sec = NULL;
+    uint32_t relative_sec_size = 1024;
 
-        if (smb2->is_connected == 0)
-        {
-                smb2_set_error(smb2, "Not Connected to Server");
-                return SMB2_STATUS_CONNECTION_DISCONNECTED;
-        }
+    if (smb2->is_connected == 0)
+    {
+        smb2_set_error(smb2, "Not Connected to Server");
+        return SMB2_STATUS_CONNECTION_DISCONNECTED;
+    }
 
-        cb_data.is_finished = 0;
+    cb_data.is_finished = 0;
 
-        info.info_type = SMB2_0_INFO_SECURITY;
-        info.u_info.security_info = NULL;
+    info.info_type = SMB2_0_INFO_SECURITY;
+    info.u_info.security_info = NULL;
 
-        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0)
-        {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0)
+    {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        if (cb_data.status != SMB2_STATUS_SUCCESS) {
-                return cb_data.status;
-        }
+    if (cb_data.status != SMB2_STATUS_SUCCESS) {
+        return cb_data.status;
+    }
 
 #ifdef DEBUG
-        print_security_descriptor(info.u_info.security_info);
+    print_security_descriptor(info.u_info.security_info);
 #endif
 
-        relative_sec = (uint8_t *) calloc(1, relative_sec_size);
-        if (relative_sec == NULL) {
-                smb2_set_error(smb2, "smb2_get_security: No memory to get security descriptor");
-                return -ENOMEM;
-        }
+    relative_sec = (uint8_t *) calloc(1, relative_sec_size);
+    if (relative_sec == NULL) {
+        smb2_set_error(smb2, "smb2_get_security: No memory to get security descriptor");
+        return -ENOMEM;
+    }
 retry:
-        if ((sts = smb2_encode_security_descriptor(smb2, info.u_info.security_info,
-                                                   relative_sec,
-                                                   &relative_sec_size)) < 0) {
-                if (sts == -9) {
-                        relative_sec_size *= 2;
-                        relative_sec = (uint8_t *) realloc(relative_sec, relative_sec_size);
-                        if (relative_sec == NULL) {
-                                smb2_set_error(smb2, "smb2_get_security: failed to allocate memory");
-                                return SMB2_STATUS_NO_MEMORY;
-                        }
-                        goto retry;
-                }
-
-                smb2_set_error(smb2, "smb2_get_security: "
-                                     "failed to encode security descriptor : %s",
-                                     smb2_get_error(smb2));
-                return SMB2_STATUS_INTERNAL_ERROR;
+    if ((sts = smb2_encode_security_descriptor(smb2, info.u_info.security_info,
+                                               relative_sec,
+                                               &relative_sec_size)) < 0)
+    {
+        if (sts == -9) {
+            relative_sec_size *= 2;
+            relative_sec = (uint8_t *) realloc(relative_sec, relative_sec_size);
+            if (relative_sec == NULL) {
+                smb2_set_error(smb2, "smb2_get_security: failed to allocate memory");
+                return SMB2_STATUS_NO_MEMORY;
+            }
+            goto retry;
         }
 
-        smb2_free_security_descriptor(smb2, info.u_info.security_info);
-        info.u_info.security_info= NULL;
+        smb2_set_error(smb2, "smb2_get_security: failed to encode security descriptor : %s",
+                       smb2_get_error(smb2));
+        return SMB2_STATUS_INTERNAL_ERROR;
+    }
 
-        *buf = relative_sec;
-        *buf_len = relative_sec_size;
+    smb2_free_security_descriptor(smb2, info.u_info.security_info);
+    info.u_info.security_info= NULL;
 
-        return cb_data.status;
+    *buf = relative_sec;
+    *buf_len = relative_sec_size;
+
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fget_security(struct smb2_context *smb2,
-                   struct smb2fh *fh,
-                   uint8_t **buf,
-                   uint32_t *buf_len)
+smb2_fget_security(smb2_context *smb2, smb2fh *fh, uint8_t **buf, uint32_t *buf_len)
 {
-        int sts = 0;
-        struct sync_cb_data cb_data;
-        smb2_file_info info;
+    int sts = 0;
+    sync_cb_data cb_data;
+    smb2_file_info info;
 
-        uint8_t *relative_sec = NULL;
-        uint32_t relative_sec_size = 1024;
+    uint8_t *relative_sec = NULL;
+    uint32_t relative_sec_size = 1024;
 
-        if (smb2->is_connected == 0)
-        {
-                smb2_set_error(smb2, "Not Connected to Server");
-                return SMB2_STATUS_CONNECTION_DISCONNECTED;
-        }
+    if (smb2->is_connected == 0)
+    {
+        smb2_set_error(smb2, "Not Connected to Server");
+        return SMB2_STATUS_CONNECTION_DISCONNECTED;
+    }
 
-        cb_data.is_finished = 0;
+    cb_data.is_finished = 0;
 
-        info.info_type = SMB2_0_INFO_SECURITY;
-        info.u_info.security_info = NULL;
+    info.info_type = SMB2_0_INFO_SECURITY;
+    info.u_info.security_info = NULL;
 
-        if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0)
-        {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0)
+    {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        if (cb_data.status != SMB2_STATUS_SUCCESS) {
-                return cb_data.status;
-        }
+    if (cb_data.status != SMB2_STATUS_SUCCESS) {
+        return cb_data.status;
+    }
 
 #ifdef DEBUG
-        print_security_descriptor(info.u_info.security_info);
+    print_security_descriptor(info.u_info.security_info);
 #endif
 
-        relative_sec = (uint8_t *) calloc(1, relative_sec_size);
-        if (relative_sec == NULL) {
-                smb2_set_error(smb2, "smb2_get_security: No memory to get security descriptor");
-                return -ENOMEM;
-        }
+    relative_sec = (uint8_t *) calloc(1, relative_sec_size);
+    if (relative_sec == NULL) {
+        smb2_set_error(smb2, "smb2_get_security: No memory to get security descriptor");
+        return -ENOMEM;
+    }
 retry:
-        if ((sts = smb2_encode_security_descriptor(smb2, info.u_info.security_info,
+    if ((sts = smb2_encode_security_descriptor(smb2, info.u_info.security_info,
                                                    relative_sec,
-                                                   &relative_sec_size)) < 0) {
-                if (sts == -9) {
-                        relative_sec_size *= 2;
-                        relative_sec = (uint8_t *) realloc(relative_sec, relative_sec_size);
-                        if (relative_sec == NULL) {
-                                smb2_set_error(smb2, "smb2_get_security: failed to allocate memory");
-                                return SMB2_STATUS_NO_MEMORY;
-                        }
-                        goto retry;
-                }
-
-                smb2_set_error(smb2, "smb2_get_security: "
-                                     "failed to encode security descriptor : %s",
-                                     smb2_get_error(smb2));
-                return SMB2_STATUS_INTERNAL_ERROR;
+                                                   &relative_sec_size)) < 0)
+    {
+        if (sts == -9) {
+            relative_sec_size *= 2;
+            relative_sec = (uint8_t *) realloc(relative_sec, relative_sec_size);
+            if (relative_sec == NULL) {
+                smb2_set_error(smb2, "smb2_get_security: failed to allocate memory");
+                return SMB2_STATUS_NO_MEMORY;
+            }
+            goto retry;
         }
 
-        smb2_free_security_descriptor(smb2, info.u_info.security_info);
-        info.u_info.security_info= NULL;
+        smb2_set_error(smb2, "smb2_get_security: failed to encode security descriptor : %s",
+                       smb2_get_error(smb2));
+        return SMB2_STATUS_INTERNAL_ERROR;
+    }
 
-        *buf = relative_sec;
-        *buf_len = relative_sec_size;
+    smb2_free_security_descriptor(smb2, info.u_info.security_info);
+    info.u_info.security_info= NULL;
 
-        return cb_data.status;
+    *buf = relative_sec;
+    *buf_len = relative_sec_size;
+
+    return cb_data.status;
 }
 
 uint32_t
-smb2_set_security(struct smb2_context *smb2,
-                  const char *path,
-                  uint8_t *buf,
-                  uint32_t buf_len)
+smb2_set_security(smb2_context *smb2, const char *path, uint8_t *buf, uint32_t buf_len)
 {
-        struct sync_cb_data cb_data;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    smb2_file_info info;
 
-        if (smb2->is_connected == 0)
-        {
-                smb2_set_error(smb2, "Not Connected to Server");
-                return SMB2_STATUS_CONNECTION_DISCONNECTED;
-        }
+    if (smb2->is_connected == 0)
+    {
+        smb2_set_error(smb2, "Not Connected to Server");
+        return SMB2_STATUS_CONNECTION_DISCONNECTED;
+    }
 
-        cb_data.is_finished = 0;
+    cb_data.is_finished = 0;
 
 #ifdef DEBUG
-        struct smb2_iovec vec;
-        struct smb2_security_descriptor *secdesc = NULL;
-        vec.buf = buf;
-        vec.len = buf_len;
+    smb2_iovec vec;
+    smb2_security_descriptor *secdesc = NULL;
+    vec.buf = buf;
+    vec.len = buf_len;
 
-        secdesc = (struct smb2_security_descriptor *)malloc(sizeof(struct smb2_security_descriptor));
-        if (smb2_decode_security_descriptor(smb2, secdesc, &vec)) {
-                smb2_set_error(smb2, "could not decode security "
-                                      "descriptor. %s",
-                               smb2_get_error(smb2));
-                return SMB2_STATUS_INTERNAL_ERROR;
-        }
-        print_security_descriptor(secdesc);
-        smb2_free_security_descriptor(smb2, secdesc); secdesc = NULL;
+    secdesc = (smb2_security_descriptor *)malloc(sizeof(smb2_security_descriptor));
+    if (smb2_decode_security_descriptor(smb2, secdesc, &vec)) {
+        smb2_set_error(smb2, "could not decode security descriptor. %s", smb2_get_error(smb2));
+        return SMB2_STATUS_INTERNAL_ERROR;
+    }
+    print_security_descriptor(secdesc);
+    smb2_free_security_descriptor(smb2, secdesc); secdesc = NULL;
 #endif
 
-        memset(&info, 0, sizeof(smb2_file_info));
-        info.info_type = SMB2_0_INFO_SECURITY;
-        info.file_info_class = 0;
-        info.u_info.sec_info.secbuf = buf;
-        info.u_info.sec_info.secbuf_len = buf_len;
+    memset(&info, 0, sizeof(smb2_file_info));
+    info.info_type = SMB2_0_INFO_SECURITY;
+    info.file_info_class = 0;
+    info.u_info.sec_info.secbuf = buf;
+    info.u_info.sec_info.secbuf_len = buf_len;
 
-        if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0)
-        {
-                smb2_set_error(smb2, "smb2_set_security_async failed : %s",
-                               smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0)
+    {
+        smb2_set_error(smb2, "smb2_set_security_async failed : %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0)
-        {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0)
+    {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fset_security(struct smb2_context *smb2,
-                   struct smb2fh *fh,
-                   uint8_t *buf,
-                   uint32_t buf_len)
+smb2_fset_security(smb2_context *smb2, smb2fh *fh, uint8_t *buf, uint32_t buf_len)
 {
-        struct sync_cb_data cb_data;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    smb2_file_info info;
 
-        if (smb2->is_connected == 0)
-        {
-                smb2_set_error(smb2, "Not Connected to Server");
-                return SMB2_STATUS_CONNECTION_DISCONNECTED;
-        }
+    if (smb2->is_connected == 0)
+    {
+        smb2_set_error(smb2, "Not Connected to Server");
+        return SMB2_STATUS_CONNECTION_DISCONNECTED;
+    }
 
-        cb_data.is_finished = 0;
+    cb_data.is_finished = 0;
 
 #ifdef DEBUG
-        struct smb2_iovec vec;
-        struct smb2_security_descriptor *secdesc = NULL;
-        vec.buf = buf;
-        vec.len = buf_len;
+    smb2_iovec vec;
+    smb2_security_descriptor *secdesc = NULL;
+    vec.buf = buf;
+    vec.len = buf_len;
 
-        secdesc = (struct smb2_security_descriptor *)malloc(sizeof(struct smb2_security_descriptor));
-        if (smb2_decode_security_descriptor(smb2, secdesc, &vec)) {
-                smb2_set_error(smb2, "could not decode security "
-                                      "descriptor. %s",
-                               smb2_get_error(smb2));
-                return SMB2_STATUS_INTERNAL_ERROR;
-        }
-        print_security_descriptor(secdesc);
-        smb2_free_security_descriptor(smb2, secdesc); secdesc = NULL;
+    secdesc = (smb2_security_descriptor *)malloc(sizeof(smb2_security_descriptor));
+    if (smb2_decode_security_descriptor(smb2, secdesc, &vec)) {
+        smb2_set_error(smb2, "could not decode security descriptor. %s", smb2_get_error(smb2));
+        return SMB2_STATUS_INTERNAL_ERROR;
+    }
+    print_security_descriptor(secdesc);
+    smb2_free_security_descriptor(smb2, secdesc); secdesc = NULL;
 #endif
 
-        memset(&info, 0, sizeof(smb2_file_info));
-        info.info_type = SMB2_0_INFO_SECURITY;
-        info.file_info_class = 0;
-        info.u_info.sec_info.secbuf = buf;
-        info.u_info.sec_info.secbuf_len = buf_len;
+    memset(&info, 0, sizeof(smb2_file_info));
+    info.info_type = SMB2_0_INFO_SECURITY;
+    info.file_info_class = 0;
+    info.u_info.sec_info.secbuf = buf;
+    info.u_info.sec_info.secbuf_len = buf_len;
 
-        if (smb2_fsetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0)
-        {
-                smb2_set_error(smb2, "smb2_set_security_async failed : %s",
-                               smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_fsetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0)
+    {
+        smb2_set_error(smb2, "smb2_set_security_async failed : %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0)
-        {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0)
+    {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
 /*
  * Send SMB2_IOCTL command to the server
   */
 uint32_t
-smb2_ioctl(struct smb2_context *smb2, struct smb2fh *fh,
+smb2_ioctl(smb2_context *smb2, smb2fh *fh,
            uint32_t ioctl_ctl, uint32_t ioctl_flags,
            uint8_t *input_buffer, uint32_t input_count,
            uint8_t *output_buffer, uint32_t *output_count)
 {
-        struct sync_cb_data cb_data;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
 
-        cb_data.is_finished = 0;
+    if (smb2_ioctl_async(smb2, fh,
+                         ioctl_ctl, ioctl_flags,
+                         input_buffer, input_count,
+                         output_buffer, output_count,
+                         sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_ioctl_async failed : %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (smb2_ioctl_async(smb2, fh,
-                             ioctl_ctl, ioctl_flags,
-                             input_buffer, input_count,
-                             output_buffer, output_count,
-                             sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_ioctl_async failed : %s", smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
-
-        return cb_data.status;
+    return cb_data.status;
 }
 
 /* share_enum()
  */
-int smb2_list_shares(struct smb2_context *smb2,
-                     const char *server,
-                     const char *user,
-                     uint32_t   shinfo_type,
-                     struct smb2_shareinfo **shares,
-                     int *numshares
-                    )
+int
+smb2_list_shares(smb2_context *smb2,
+                 const char *server,
+                 const char *user,
+                 uint32_t   shinfo_type,
+                 smb2_shareinfo **shares,
+                 int *numshares
+                )
 {
-        uint32_t status = 0;
-        struct smb2fh *fh = NULL;
-        uint8_t write_buf[1024] = {0};
-        uint32_t write_count = 0;
-        uint8_t read_buf[1024] ={0};
-        uint32_t bytes_read = 0;
-        struct rpc_bind_request bind_req;
-        struct context_item dcerpc_ctx;
+    uint32_t status = 0;
+    smb2fh *fh = NULL;
+    uint8_t write_buf[1024] = {0};
+    uint32_t write_count = 0;
+    uint8_t read_buf[1024] ={0};
+    uint32_t bytes_read = 0;
+    rpc_bind_request bind_req;
+    context_item dcerpc_ctx;
 
-        struct rpc_header rsp_hdr;
-        struct rpc_bind_response ack;
-        struct rpc_bind_nack_response nack;
+    rpc_header rsp_hdr;
+    rpc_bind_response ack;
+    rpc_bind_nack_response nack;
 
-        uint16_t max_xmit_frag = 0;
-        uint16_t max_recv_frag = 0;
+    uint16_t max_xmit_frag = 0;
+    uint16_t max_recv_frag = 0;
 
-        char serverName[4096] = {0};
+    char serverName[4096] = {0};
 
-        if (server == NULL) {
-                smb2_set_error(smb2, "smb2_list_shares:server not specified");
-                return -1;
+    if (server == NULL) {
+        smb2_set_error(smb2, "smb2_list_shares:server not specified");
+        return -1;
+    }
+    if (user == NULL) {
+        smb2_set_error(smb2, "smb2_list_shares:user not specified");
+        return -1;
+    }
+
+    if (shares == NULL || numshares == NULL) {
+        smb2_set_error(smb2, "smb2_list_shares:No memory allocated for share listing");
+        return -1;
+    }
+
+    smb2->use_cached_creds = 1;
+    if (smb2_connect_share(smb2, server, "IPC$", user) !=0) {
+        smb2_set_error(smb2, "smb2_connect_share_async failed. %s", smb2_get_error(smb2));
+        return -ENOMEM;
+    }
+
+    fh = smb2_open_pipe(smb2, "srvsvc");
+    if (fh == NULL) {
+        smb2_set_error(smb2, "smb2_list_shares: failed to open SRVSVC pipe: %s", smb2_get_error(smb2));
+        return -1;
+    }
+
+    dcerpc_create_bind_req(&bind_req, 1);
+    dcerpc_init_context(&dcerpc_ctx, CONTEXT_SRVSVC);
+
+    write_count = sizeof(rpc_bind_request) + sizeof(context_item);
+    memcpy(write_buf, &bind_req, sizeof(rpc_bind_request));
+    memcpy(write_buf+sizeof(rpc_bind_request), &dcerpc_ctx, sizeof(context_item));
+
+    /* We can achieve BIND doing write and read on the PIPE too, similar to SMB1 */
+    status = smb2_ioctl(smb2, fh,
+                        FSCTL_PIPE_TRANSCEIVE,
+                        SMB2_0_IOCTL_IS_FSCTL,
+                        write_buf, write_count,
+                        read_buf, &bytes_read);
+    if (status != SMB2_STATUS_SUCCESS) {
+        smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed for BIND : %s", smb2_get_error(smb2));
+        return -1;
+    }
+
+    if (dcerpc_get_response_header(read_buf, bytes_read, &rsp_hdr) < 0) {
+        smb2_set_error(smb2, "failed to parse dcerpc response header");
+        return -1;
+    }
+
+    if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
+        if (dcerpc_get_bind_nack_response(read_buf, bytes_read, &nack) < 0) {
+            smb2_set_error(smb2, "failed to parse dcerpc BINDNACK response");
+            return -1;
         }
-        if (user == NULL) {
-                smb2_set_error(smb2, "smb2_list_shares:user not specified");
-                return -1;
+        smb2_set_error(smb2, "dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
+        return -1;
+    } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
+        if (dcerpc_get_bind_ack_response(read_buf, bytes_read, &ack) < 0) {
+            smb2_set_error(smb2, "failed to parse dcerpc BINDACK response");
+            return -1;
+        }
+        /* save the max xmit and recv frag details */
+        max_xmit_frag = ack.max_xmit_frag;
+        max_recv_frag = ack.max_recv_frag;
+    }
+
+    if (sprintf(&serverName[0], "\\\\%s", server) < 0) {
+        smb2_set_error(smb2, "Failed to create NetrShareEnum request");
+        return -1;
+    }
+
+    uint32_t resumeHandlePtr = 0;
+    uint32_t resumeHandle = 0;
+    uint32_t shares_read = 0;
+    uint32_t total_share_count = 0;
+
+    do {
+        /* we need to do this in loop till we get all shares */
+        uint32_t srvs_sts = 0;
+        int last_frag = 1;
+        uint8_t  netShareEnumBuf[1024] = {0};
+        uint32_t netShareEnumBufLen = 1024;
+        DceRpcOperationRequest *dceOpReq = NULL;
+        uint32_t payloadlen = 0;
+        uint32_t offset = 0;
+
+#define MAX_BUF_SIZE	(64 * 1024)
+        uint8_t  output_buf[MAX_BUF_SIZE] = {0};
+        uint32_t output_count = 64 * 4096;
+        uint8_t  *resp = NULL;
+        uint32_t share_count = 0;
+
+        DceRpcOperationResponse dceOpRes = {{0}};
+
+        payloadlen = netShareEnumBufLen;
+        dceOpReq = (DceRpcOperationRequest *)&netShareEnumBuf[0];
+        payloadlen -= sizeof(DceRpcOperationRequest);
+        offset += sizeof(DceRpcOperationRequest);
+
+        if (srvsvc_create_NetrShareEnumRequest(smb2,
+                                               serverName,
+                                               shinfo_type,
+                                               resumeHandle,
+                                               netShareEnumBuf+offset,
+                                               &payloadlen) < 0) {
+            return -1;
         }
 
-        if (shares == NULL || numshares == NULL) {
-                smb2_set_error(smb2, "smb2_list_shares:No memory allocated for share listing");
-                return -1;
+        offset += payloadlen;
+        /* opnum - 15 - for share enumeration */
+        dcerpc_create_Operation_Request(smb2, dceOpReq, DCE_OP_SHARE_ENUM, payloadlen);
+
+        if (offset > max_xmit_frag) {
+            smb2_set_error(smb2, "smb2_list_shares: IOCTL Payload size is larger than max_xmit_frag");
+            return -1;
         }
 
-        smb2->use_cached_creds = 1;
-        if (smb2_connect_share(smb2, server, "IPC$", user) !=0) {
-                smb2_set_error(smb2, "smb2_connect_share_async failed. %s",
-                               smb2_get_error(smb2));
-                return -ENOMEM;
-        }
-
-        fh = smb2_open_pipe(smb2, "srvsvc");
-        if (fh == NULL) {
-                smb2_set_error(smb2, "smb2_list_shares: failed to open SRVSVC pipe: %s",
-                               smb2_get_error(smb2));
-                return -1;
-        }
-
-        dcerpc_create_bind_req(&bind_req, 1);
-        dcerpc_init_context(&dcerpc_ctx, CONTEXT_SRVSVC);
-
-        write_count = sizeof(struct rpc_bind_request) + sizeof(struct context_item);
-        memcpy(write_buf, &bind_req, sizeof(struct rpc_bind_request));
-        memcpy(write_buf+sizeof(struct rpc_bind_request), &dcerpc_ctx, sizeof(struct context_item));
-
-        /* We can achieve BIND doing write and read on the PIPE too, similar to SMB1 */
         status = smb2_ioctl(smb2, fh,
                             FSCTL_PIPE_TRANSCEIVE,
                             SMB2_0_IOCTL_IS_FSCTL,
-                            write_buf, write_count,
-                            read_buf, &bytes_read);
+                            netShareEnumBuf, offset,
+                            output_buf, &output_count);
         if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed for BIND : %s", smb2_get_error(smb2));
-                return -1;
+            smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed : %s", smb2_get_error(smb2));
+            return -1;
         }
 
-        if (dcerpc_get_response_header(read_buf, bytes_read, &rsp_hdr) < 0) {
-                smb2_set_error(smb2, "failed to parse dcerpc response header");
-                return -1;
+        /* Response parsing */
+        resp = &output_buf[0];
+        offset = 0;
+
+        if (dcerpc_parse_Operation_Response(smb2, resp, output_count, &dceOpRes, &status) < 0) {
+            smb2_set_error(smb2, "dcerpc_parse_Operation_Response failed : %s", smb2_get_error(smb2));
+            return -1;
         }
 
-        if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
-                if (dcerpc_get_bind_nack_response(read_buf, bytes_read, &nack) < 0) {
-                        smb2_set_error(smb2, "failed to parse dcerpc BINDNACK response");
-                        return -1;
-                }
-                smb2_set_error(smb2, "dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
+        last_frag = dceOpRes.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
+        /* read the complete dcerpc data - all frags */
+        while (!last_frag) {
+            uint8_t *readbuf = NULL;
+            uint32_t frag_len = 0;
+            DceRpcOperationResponse dceOpRes2 = {{0}};
+            readbuf = (uint8_t *)calloc(1, max_recv_frag);
+            if (readbuf == NULL) {
+                smb2_set_error(smb2, "failed to allocate readbuf");
                 return -1;
-        } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
-                if (dcerpc_get_bind_ack_response(read_buf, bytes_read, &ack) < 0) {
-                        smb2_set_error(smb2, "failed to parse dcerpc BINDACK response");
-                        return -1;
-                }
-                /* save the max xmit and recv frag details */
-                max_xmit_frag = ack.max_xmit_frag;
-                max_recv_frag = ack.max_recv_frag;
+            }
+
+            smb2_lseek(smb2, fh, 0, SEEK_SET, NULL);
+            status = smb2_read(smb2, fh, readbuf, max_recv_frag);
+            if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_END_OF_FILE) {
+                smb2_set_error(smb2, "failed to read remaining frags");
+                free(readbuf); readbuf = NULL;
+                return -1;
+            }
+            bytes_read = fh->byte_count;
+
+            if (dcerpc_parse_Operation_Response(smb2,
+                                                readbuf,
+                                                bytes_read,
+                                                &dceOpRes2,
+                                                &status) < 0) {
+                smb2_set_error(smb2, "dcerpc_parse_Operation_Response -2 failed : %s", smb2_get_error(smb2));
+                free(readbuf); readbuf = NULL;
+                return -1;
+            }
+            last_frag = dceOpRes2.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
+            frag_len = bytes_read - sizeof(DceRpcOperationResponse);
+
+            if ((output_count + frag_len) > MAX_BUF_SIZE) {
+                smb2_set_error(smb2, "smb2_list_shares : 64K is not sufficient to hold shares data");
+                free(readbuf); readbuf = NULL;
+                return -1;
+            }
+
+            /* what if all fragments add up to > 64K?
+             * should output_buf be malloc-ed and resized?
+             */
+            /*Append the buffer*/
+            memcpy(&output_buf[output_count], readbuf+sizeof(DceRpcOperationResponse), frag_len);
+            output_count += frag_len;
+
+            free(readbuf);
         }
 
-        if (sprintf(&serverName[0], "\\\\%s", server) < 0) {
-                smb2_set_error(smb2, "Failed to create NetrShareEnum request");
-                return -1;
+        payloadlen = output_count;
+        offset += sizeof(DceRpcOperationResponse);
+        payloadlen -= sizeof(DceRpcOperationResponse);
+
+        srvs_sts = srvsvc_get_NetrShareEnum_status(smb2, resp+offset, payloadlen);
+        if ( srvs_sts != 0x00000000 ) {
+            smb2_set_error(smb2, "SRVSVC NetrShareEnum Failed with error %x", srvs_sts);
+            break;
         }
+        payloadlen -= sizeof(uint32_t);
 
-        uint32_t resumeHandlePtr = 0;
-        uint32_t resumeHandle = 0;
-        uint32_t shares_read = 0;
-        uint32_t total_share_count = 0;
+        if (srvsvc_parse_NetrShareEnumResponse(smb2,
+                                               resp+offset,
+                                               payloadlen,
+                                               &share_count,
+                                               &total_share_count,
+                                               &resumeHandlePtr,
+                                               &resumeHandle,
+                                               shares) < 0) {
+            smb2_set_error(smb2, "srvsvc_parse_NetrShareEnumResponse failed : %s", smb2_get_error(smb2));
+            return -1;
+        }
+        shares_read += share_count;
+    } while (shares_read < total_share_count);
 
-        do {
-                /* we need to do this in loop till we get all shares */
-                uint32_t srvs_sts = 0;
-                int last_frag = 1;
-                uint8_t  netShareEnumBuf[1024] = {0};
-                uint32_t netShareEnumBufLen = 1024;
-                struct DceRpcOperationRequest *dceOpReq = NULL;
-                uint32_t payloadlen = 0;
-                uint32_t offset = 0;
-
-#define MAX_BUF_SIZE	(64 * 1024)
-                uint8_t  output_buf[MAX_BUF_SIZE] = {0};
-                uint32_t output_count = 64 * 4096;
-                uint8_t  *resp = NULL;
-                uint32_t share_count = 0;
-
-                struct DceRpcOperationResponse dceOpRes = {{0}};
-
-                payloadlen = netShareEnumBufLen;
-                dceOpReq = (struct DceRpcOperationRequest *)&netShareEnumBuf[0];
-                payloadlen -= sizeof(struct DceRpcOperationRequest);
-                offset += sizeof(struct DceRpcOperationRequest);
-
-                if (srvsvc_create_NetrShareEnumRequest(smb2,
-                                                       serverName,
-                                                       shinfo_type,
-                                                       resumeHandle,
-                                                       netShareEnumBuf+offset,
-                                                       &payloadlen) < 0) {
-                        return -1;
-                }
-
-                offset += payloadlen;
-                /* opnum - 15 - for share enumeration */
-                dcerpc_create_Operation_Request(smb2, dceOpReq, DCE_OP_SHARE_ENUM, payloadlen);
-
-                if (offset > max_xmit_frag) {
-                        smb2_set_error(smb2, "smb2_list_shares: IOCTL Payload size is "
-                                             "larger than max_xmit_frag");
-                        return -1;
-                }
-
-                status = smb2_ioctl(smb2, fh,
-                                    FSCTL_PIPE_TRANSCEIVE,
-                                    SMB2_0_IOCTL_IS_FSCTL,
-                                    netShareEnumBuf, offset,
-                                    output_buf, &output_count);
-                if (status != SMB2_STATUS_SUCCESS) {
-                        smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed : %s",
-                                       smb2_get_error(smb2));
-                        return -1;
-                }
-
-                /* Response parsing */
-                resp = &output_buf[0];
-                offset = 0;
-
-                if (dcerpc_parse_Operation_Response(smb2, resp, output_count, &dceOpRes, &status) < 0) {
-                        smb2_set_error(smb2,
-                                       "dcerpc_parse_Operation_Response failed : %s",
-                                       smb2_get_error(smb2));
-                        return -1;
-                }
-
-                last_frag = dceOpRes.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
-                /* read the complete dcerpc data - all frags */
-                while (!last_frag) {
-                        uint8_t *readbuf = NULL;
-                        uint32_t frag_len = 0;
-                        struct DceRpcOperationResponse dceOpRes2 = {{0}};
-                        readbuf = (uint8_t *)calloc(1, max_recv_frag);
-                        if (readbuf == NULL) {
-                                smb2_set_error(smb2, "failed to allocate readbuf");
-                                return -1;
-                        }
-                        smb2_lseek(smb2, fh, 0, SEEK_SET, NULL);
-                        status = smb2_read(smb2, fh,
-                                           readbuf,
-                                           max_recv_frag);
-                        if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_END_OF_FILE) {
-                                smb2_set_error(smb2, "failed to read remaining frags");
-                                free(readbuf); readbuf = NULL;
-                                return -1;
-                        }
-                        bytes_read = fh->byte_count;
-
-                        if (dcerpc_parse_Operation_Response(smb2,
-                                                            readbuf,
-                                                            bytes_read,
-                                                            &dceOpRes2,
-                                                            &status) < 0) {
-                                smb2_set_error(smb2,
-                                               "dcerpc_parse_Operation_Response -2 failed : %s",
-                                               smb2_get_error(smb2));
-                                free(readbuf); readbuf = NULL;
-                                return -1;
-                        }
-                        last_frag = dceOpRes2.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
-                        frag_len = bytes_read - sizeof(struct DceRpcOperationResponse);
-
-                        if ((output_count + frag_len) > MAX_BUF_SIZE) {
-                                smb2_set_error(smb2, "smb2_list_shares : 64K is not sufficient to hold shares data");
-                                free(readbuf); readbuf = NULL;
-                                return -1;
-                        }
-
-                        /* what if all fragments add up to > 64K?
-                         * should output_buf be malloc-ed and resized?
-                         */
-                        /*Append the buffer*/
-                        memcpy(&output_buf[output_count],
-                               readbuf+sizeof(struct DceRpcOperationResponse),
-                               frag_len);
-                        output_count += frag_len;
-
-                        free(readbuf);
-                }
-
-                payloadlen = output_count;
-                offset += sizeof(struct DceRpcOperationResponse);
-                payloadlen -= sizeof(struct DceRpcOperationResponse);
-
-                srvs_sts = srvsvc_get_NetrShareEnum_status(smb2,
-                                                           resp+offset,
-                                                           payloadlen);
-                if ( srvs_sts != 0x00000000 ) {
-                        smb2_set_error(smb2,
-                                       "SRVSVC NetrShareEnum Failed with error %x",
-                                       srvs_sts);
-                        break;
-                }
-                payloadlen -= sizeof(uint32_t);
-
-                if (srvsvc_parse_NetrShareEnumResponse(smb2,
-                                                       resp+offset,
-                                                       payloadlen,
-                                                       &share_count,
-                                                       &total_share_count,
-                                                       &resumeHandlePtr,
-                                                       &resumeHandle,
-                                                       shares) < 0) {
-                        smb2_set_error(smb2,
-                                       "srvsvc_parse_NetrShareEnumResponse failed : %s",
-                                       smb2_get_error(smb2));
-                        return -1;
-                }
-                shares_read += share_count;
-        } while (shares_read < total_share_count);
-
-        /* close the pipe  & disconnect */
-        smb2_close(smb2, fh);
-        smb2_disconnect_share(smb2);
-        return 0;
+    /* close the pipe  & disconnect */
+    smb2_close(smb2, fh);
+    smb2_disconnect_share(smb2);
+    return 0;
 }
 
 uint32_t
-smb2_getinfo_basic(struct smb2_context *smb2,
-                      const char *path,
-                      struct smb2_file_basic_info *basic_info)
+smb2_getinfo_basic(smb2_context *smb2, const char *path, smb2_file_basic_info *basic_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
 
-        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
-                smb2_get_error(smb2));
-                return SMB2_STATUS_PAYLOAD_FAILED;
-        }
+    if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return SMB2_STATUS_PAYLOAD_FAILED;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return SMB2_STATUS_SOCKET_ERROR;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return SMB2_STATUS_SOCKET_ERROR;
+    }
 
-        *basic_info = info.u_info.basic_info;
+    *basic_info = info.u_info.basic_info;
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fgetinfo_basic(struct smb2_context *smb2,
-                       struct smb2fh *fh,
-                       struct smb2_file_basic_info *basic_info)
+smb2_fgetinfo_basic(smb2_context *smb2, smb2fh *fh, smb2_file_basic_info *basic_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
 
-        if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
-                smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        *basic_info = info.u_info.basic_info;
-        return cb_data.status;
+    *basic_info = info.u_info.basic_info;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_getinfo_standard(struct smb2_context *smb2,
-                      const char *path,
-                      struct smb2_file_standard_info *standard_info)
+smb2_getinfo_standard(smb2_context *smb2, const char *path, smb2_file_standard_info *standard_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_STANDARD_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_STANDARD_INFORMATION;
 
-        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
-                smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        *standard_info = info.u_info.standard_info;
-        return cb_data.status;
+    *standard_info = info.u_info.standard_info;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fgetinfo_standard(struct smb2_context *smb2,
-                       struct smb2fh *fh,
-                       struct smb2_file_standard_info *standard_info)
+smb2_fgetinfo_standard(smb2_context *smb2, smb2fh *fh, smb2_file_standard_info *standard_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_STANDARD_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_STANDARD_INFORMATION;
 
-        if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
-                smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        *standard_info = info.u_info.standard_info;
-        return cb_data.status;
+    *standard_info = info.u_info.standard_info;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_getinfo_extended(struct smb2_context *smb2,
-                      const char *path,
-                      struct smb2_file_extended_info **extended_info)
+smb2_getinfo_extended(smb2_context *smb2, const char *path, smb2_file_extended_info **extended_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
 
-        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
-                smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        *extended_info = info.u_info.extended_info;
-        return cb_data.status;
+    *extended_info = info.u_info.extended_info;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fgetinfo_extended(struct smb2_context *smb2,
-                       struct smb2fh *fh,
-                       struct smb2_file_extended_info **extended_info)
+smb2_fgetinfo_extended(smb2_context *smb2, smb2fh *fh, smb2_file_extended_info **extended_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
 
-        if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
-                smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        *extended_info = info.u_info.extended_info;
-        return cb_data.status;
+    *extended_info = info.u_info.extended_info;
+    return cb_data.status;
 }
 
 static uint32_t
-smb2_get_file_extended_size(struct smb2_file_extended_info *info,
-                            const int count)
+smb2_get_file_extended_size(smb2_file_extended_info *info, const int count)
 {
-        uint32_t size = 0;
-        int entries = 0;
-        struct smb2_file_extended_info* tmp_info = info;
+    uint32_t size = 0;
+    int entries = 0;
+    smb2_file_extended_info* tmp_info = info;
 
-        while (entries < count) {
-                size += sizeof(struct smb2_file_full_ea_info)-
-                        (2*sizeof(uint8_t*));
-                size += tmp_info->name_len + 1;
-                size += tmp_info->value_len;
+    while (entries < count) {
+        size += sizeof(smb2_file_full_ea_info) - (2*sizeof(uint8_t*));
+        size += tmp_info->name_len + 1;
+        size += tmp_info->value_len;
 
-                if ((size & 0x03) != 0) {
-                        uint32_t padlen = 0;
-                        padlen = 4 - (size & 0x03);
-                        size += padlen;
-                }
-                tmp_info++;
-                entries++;
-        };
+        if ((size & 0x03) != 0) {
+            uint32_t padlen = 0;
+            padlen = 4 - (size & 0x03);
+            size += padlen;
+        }
+        tmp_info++;
+        entries++;
+    };
 
-        return size;
+    return size;
 }
 
 uint32_t
-smb2_setinfo_extended(struct smb2_context *smb2,
+smb2_setinfo_extended(smb2_context *smb2,
                       const char *path,
-                      struct smb2_file_extended_info* extended_info,
+                      smb2_file_extended_info* extended_info,
                       const int count)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        if (extended_info == NULL) {
-                smb2_set_error(smb2, "%s : no info to set");
-                return -1;
-        }
+    if (extended_info == NULL) {
+        smb2_set_error(smb2, "%s : no info to set");
+        return -1;
+    }
 
-        uint32_t eabuf_size = smb2_get_file_extended_size(extended_info, count);
+    uint32_t eabuf_size = smb2_get_file_extended_size(extended_info, count);
 
-        struct smb2_file_full_extended_info full_extended_info;
-        full_extended_info.eabuf = (uint8_t*)malloc(eabuf_size);
-        full_extended_info.eabuf_len = 0;
-        smb2_encode_file_extended_info(smb2, extended_info, count,
-                                       full_extended_info.eabuf,
-                                       &full_extended_info.eabuf_len);
+    smb2_file_full_extended_info full_extended_info;
+    full_extended_info.eabuf = (uint8_t*)malloc(eabuf_size);
+    full_extended_info.eabuf_len = 0;
+    smb2_encode_file_extended_info(smb2, extended_info, count,
+                                   full_extended_info.eabuf,
+                                   &full_extended_info.eabuf_len);
 
-        memset(&info, 0, sizeof(smb2_file_info));
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
-        info.u_info.full_extended_info = full_extended_info;
+    memset(&info, 0, sizeof(smb2_file_info));
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
+    info.u_info.full_extended_info = full_extended_info;
 
-        if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "%s failed : %s", __func__,
-                               smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fsetinfo_extended(struct smb2_context *smb2,
-                       struct smb2fh *fh,
-                       struct smb2_file_extended_info* extended_info,
+smb2_fsetinfo_extended(smb2_context *smb2,
+                       smb2fh *fh,
+                       smb2_file_extended_info* extended_info,
                        const int count)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        if (extended_info == NULL) {
-                smb2_set_error(smb2, "%s : no info to set");
-                return -1;
-        }
+    if (extended_info == NULL) {
+        smb2_set_error(smb2, "%s : no info to set");
+        return -1;
+    }
 
-        uint32_t eabuf_size = smb2_get_file_extended_size(extended_info, count);
+    uint32_t eabuf_size = smb2_get_file_extended_size(extended_info, count);
 
-        struct smb2_file_full_extended_info full_extended_info;
-        full_extended_info.eabuf = (uint8_t*)malloc(eabuf_size);
-        full_extended_info.eabuf_len = 0;
-        smb2_encode_file_extended_info(smb2, extended_info, count,
-                                       full_extended_info.eabuf,
-                                       &full_extended_info.eabuf_len);
+    smb2_file_full_extended_info full_extended_info;
+    full_extended_info.eabuf = (uint8_t*)malloc(eabuf_size);
+    full_extended_info.eabuf_len = 0;
+    smb2_encode_file_extended_info(smb2, extended_info, count,
+                                   full_extended_info.eabuf,
+                                   &full_extended_info.eabuf_len);
 
-        memset(&info, 0, sizeof(smb2_file_info));
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
-        info.u_info.full_extended_info = full_extended_info;
+    memset(&info, 0, sizeof(smb2_file_info));
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
+    info.u_info.full_extended_info = full_extended_info;
 
-        if (smb2_fsetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "%s failed : %s", __func__,
-                               smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_fsetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        return cb_data.status;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_getinfo_stream(struct smb2_context *smb2,
-                    const char *path,
-                    struct smb2_file_stream_info **stream_info)
+smb2_getinfo_stream(smb2_context *smb2, const char *path, smb2_file_stream_info **stream_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
 
-        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
-                smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        *stream_info = info.u_info.stream_info;
-        return cb_data.status;
+    *stream_info = info.u_info.stream_info;
+    return cb_data.status;
 }
 
 uint32_t
-smb2_fgetinfo_stream(struct smb2_context *smb2,
-                     struct smb2fh *fh,
-                     struct smb2_file_stream_info **stream_info)
+smb2_fgetinfo_stream(smb2_context *smb2, smb2fh *fh, smb2_file_stream_info **stream_info)
 {
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-        smb2_file_info info;
+    sync_cb_data cb_data;
+    cb_data.is_finished = 0;
+    smb2_file_info info;
 
-        info.info_type = SMB2_0_INFO_FILE;
-        info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
+    info.info_type = SMB2_0_INFO_FILE;
+    info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
 
-        if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_fgetinfo_async failed - %s",
-                smb2_get_error(smb2));
-                return -1;
-        }
+    if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+        smb2_set_error(smb2, "smb2_fgetinfo_async failed - %s", smb2_get_error(smb2));
+        return -1;
+    }
 
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
+    if (wait_for_reply(smb2, &cb_data) < 0) {
+        return -1;
+    }
 
-        *stream_info = info.u_info.stream_info;
-        return cb_data.status;
+    *stream_info = info.u_info.stream_info;
+    return cb_data.status;
 }
 
 /* lookUpSid()
  */
-int smb2_lookUpSid(struct smb2_context *smb2,
-                   const char          *user,
-                   const char          *domain,
-                   const char          *server,
-                   uint8_t            **sid)
+int
+smb2_lookUpSid(smb2_context *smb2,
+               const char          *user,
+               const char          *domain,
+               const char          *server,
+               uint8_t            **sid)
 {
 #define	MAX_IN_BUF_SIZE		(1 * 1024)
 #define	MAX_OUT_BUF_SIZE	(64 * 1024)
-        uint32_t   status = 0;
-        struct     smb2fh *fh = NULL;
-        uint8_t    dceRpcBuf[MAX_IN_BUF_SIZE] = {0};
-        uint32_t   bindReqSize = 0;
-        struct     rpc_bind_request bind_req;
-        struct     context_item dcerpc_ctx;
+    uint32_t   status = 0;
+    smb2fh *fh = NULL;
+    uint8_t    dceRpcBuf[MAX_IN_BUF_SIZE] = {0};
+    uint32_t   bindReqSize = 0;
+    rpc_bind_request bind_req;
+    context_item dcerpc_ctx;
 
-        struct rpc_header rsp_hdr;
-        struct rpc_bind_response ack;
-        struct rpc_bind_nack_response nack;
+    rpc_header rsp_hdr;
+    rpc_bind_response ack;
+    rpc_bind_nack_response nack;
 
-        uint16_t max_xmit_frag = 0;
-        uint16_t max_recv_frag = 0;
+    uint16_t max_xmit_frag = 0;
+    uint16_t max_recv_frag = 0;
 
-        struct DceRpcOperationRequest *dceOpReq = NULL;
-        struct DceRpcOperationResponse dceOpRes2 = {{0}};
-        uint32_t offset = 0;
-        uint32_t bytes_used = 0;
+    DceRpcOperationRequest *dceOpReq = NULL;
+    DceRpcOperationResponse dceOpRes2 = {{0}};
+    uint32_t offset = 0;
+    uint32_t bytes_used = 0;
 
-        uint8_t  output_buf[MAX_OUT_BUF_SIZE] = {0};
-        uint32_t output_count = MAX_OUT_BUF_SIZE;
+    uint8_t  output_buf[MAX_OUT_BUF_SIZE] = {0};
+    uint32_t output_count = MAX_OUT_BUF_SIZE;
 
-        PolicyHandle pHandle = {0};
+    PolicyHandle pHandle = {0};
 
-        if (server == NULL) {
-                smb2_set_error(smb2, "smb2_lookUpSid:server not specified");
-                return -1;
+    if (server == NULL) {
+        smb2_set_error(smb2, "smb2_lookUpSid:server not specified");
+        return -1;
+    }
+    if (user == NULL) {
+        smb2_set_error(smb2, "smb2_lookUpSid:user not specified");
+        return -1;
+    }
+    if (domain == NULL) {
+        smb2_set_error(smb2, "smb2_lookUpSid:domain not specified");
+        return -1;
+    }
+
+    smb2->use_cached_creds = 1;
+    if (smb2_connect_share(smb2, server, "IPC$", user) !=0) {
+        smb2_set_error(smb2, "smb2_connect_share_async failed. %s", smb2_get_error(smb2));
+        return -ENOMEM;
+    }
+
+    fh = smb2_open_pipe(smb2, "lsarpc");
+    if (fh == NULL) {
+        smb2_set_error(smb2, "smb2_lookUpSid: failed to open LSARPC pipe: %s", smb2_get_error(smb2));
+        return -1;
+    }
+
+    dcerpc_create_bind_req(&bind_req, 1);
+    dcerpc_init_context(&dcerpc_ctx, CONTEXT_LSARPC);
+
+    bindReqSize = sizeof(rpc_bind_request) + sizeof(context_item);
+    memcpy(dceRpcBuf, &bind_req, sizeof(rpc_bind_request));
+    memcpy(dceRpcBuf+sizeof(rpc_bind_request), &dcerpc_ctx, sizeof(context_item));
+
+    status = smb2_ioctl(smb2, fh,
+                        FSCTL_PIPE_TRANSCEIVE,
+                        SMB2_0_IOCTL_IS_FSCTL,
+                        dceRpcBuf, bindReqSize,
+                        output_buf, &output_count);
+    if (status != SMB2_STATUS_SUCCESS) {
+        smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for bind: %s", smb2_get_error(smb2));
+        return -1;
+    }
+
+    if (dcerpc_get_response_header(output_buf, output_count, &rsp_hdr) < 0) {
+        smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response header");
+        return -1;
+    }
+
+    if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
+        if (dcerpc_get_bind_nack_response(output_buf, output_count, &nack) < 0) {
+            smb2_set_error(smb2, "smb2_lookUpSid:failed to parse dcerpc BINDNACK response");
+            return -1;
         }
-        if (user == NULL) {
-                smb2_set_error(smb2, "smb2_lookUpSid:user not specified");
-                return -1;
+        smb2_set_error(smb2, "smb2_lookUpSid:dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
+        return -1;
+    } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
+        if (dcerpc_get_bind_ack_response(output_buf, output_count, &ack) < 0) {
+            smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc BINDACK response");
+            return -1;
         }
-        if (domain == NULL) {
-                smb2_set_error(smb2, "smb2_lookUpSid:domain not specified");
-                return -1;
-        }
+        /* save the max xmit and recv frag details */
+        max_xmit_frag = ack.max_xmit_frag;
+        max_recv_frag = ack.max_recv_frag;
+        max_recv_frag = max_recv_frag;
+    }
 
-        smb2->use_cached_creds = 1;
-        if (smb2_connect_share(smb2, server, "IPC$", user) !=0) {
-                smb2_set_error(smb2, "smb2_connect_share_async failed. %s",
-                               smb2_get_error(smb2));
-                return -ENOMEM;
-        }
+    memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
+    memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
 
-        fh = smb2_open_pipe(smb2, "lsarpc");
-        if (fh == NULL) {
-                smb2_set_error(smb2, "smb2_lookUpSid: failed to open LSARPC pipe: %s",
-                               smb2_get_error(smb2));
-                return -1;
-        }
+    /* BIND is done send OpenPolicy request */
+    dceOpReq = (DceRpcOperationRequest *)&dceRpcBuf[0];
+    offset += sizeof(DceRpcOperationRequest);
 
-        dcerpc_create_bind_req(&bind_req, 1);
-        dcerpc_init_context(&dcerpc_ctx, CONTEXT_LSARPC);
+    lsarpc_create_OpenPolicy2Req(smb2, server, RIGHT_TO_LOOKUP_NAMES,
+                                 dceRpcBuf+offset, MAX_IN_BUF_SIZE-offset, &bytes_used);
+    offset += bytes_used;
 
-        bindReqSize = sizeof(struct rpc_bind_request) + sizeof(struct context_item);
-        memcpy(dceRpcBuf, &bind_req, sizeof(struct rpc_bind_request));
-        memcpy(dceRpcBuf+sizeof(struct rpc_bind_request), &dcerpc_ctx, sizeof(struct context_item));
+    /* opnum - 44 - for OpenPolicy2 */
+    dcerpc_create_Operation_Request(smb2, dceOpReq, DCE_OP_OPEN_POLICY2, bytes_used);
 
-        status = smb2_ioctl(smb2, fh,
-                            FSCTL_PIPE_TRANSCEIVE,
-                            SMB2_0_IOCTL_IS_FSCTL,
-                            dceRpcBuf, bindReqSize,
-                            output_buf, &output_count);
-        if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for bind: %s", smb2_get_error(smb2));
-                return -1;
-        }
+    if (offset > max_xmit_frag) {
+        smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
+        return -1;
+    }
 
-        if (dcerpc_get_response_header(output_buf, output_count, &rsp_hdr) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response header");
-                return -1;
-        }
-
-        if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
-                if (dcerpc_get_bind_nack_response(output_buf, output_count, &nack) < 0) {
-                        smb2_set_error(smb2, "smb2_lookUpSid:failed to parse dcerpc BINDNACK response");
-                        return -1;
-                }
-                smb2_set_error(smb2, "smb2_lookUpSid:dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
-                return -1;
-        } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
-                if (dcerpc_get_bind_ack_response(output_buf, output_count, &ack) < 0) {
-                        smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc BINDACK response");
-                        return -1;
-                }
-                /* save the max xmit and recv frag details */
-                max_xmit_frag = ack.max_xmit_frag;
-                max_recv_frag = ack.max_recv_frag;
-                max_recv_frag = max_recv_frag;
-        }
-
-        memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
-        memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
-
-        /* BIND is done send OpenPolicy request */
-        dceOpReq = (struct DceRpcOperationRequest *)&dceRpcBuf[0];
-        offset += sizeof(struct DceRpcOperationRequest);
-
-        lsarpc_create_OpenPolicy2Req(smb2, server, RIGHT_TO_LOOKUP_NAMES,
-                                     dceRpcBuf+offset, MAX_IN_BUF_SIZE-offset, &bytes_used);
-        offset += bytes_used;
-
-        /* opnum - 44 - for OpenPolicy2 */
-        dcerpc_create_Operation_Request(smb2, dceOpReq, DCE_OP_OPEN_POLICY2, bytes_used);
-
-        if (offset > max_xmit_frag) {
-                smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
-                return -1;
-        }
-
-        status = smb2_ioctl(smb2, fh,
-                            FSCTL_PIPE_TRANSCEIVE,
-                            SMB2_0_IOCTL_IS_FSCTL,
-                            dceRpcBuf, offset,
-                            output_buf, &output_count);
-        if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for OpenPolicy2: %s", smb2_get_error(smb2));
-                return -1;
-        }
-        if (dcerpc_parse_Operation_Response(smb2,
-                                            output_buf,
-                                            output_count,
-                                            &dceOpRes2,
-                                            &status) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response for OpenPolicy2 : %x", status);
-                return -1;
-        }
-
-        offset = 0;
-        offset +=sizeof(struct DceRpcOperationResponse);
-
-        if (lsarpc_parse_OpenPolicy2Res(smb2, output_buf+offset,
-                                        output_count-offset,
-                                        &pHandle,
+    status = smb2_ioctl(smb2, fh,
+                        FSCTL_PIPE_TRANSCEIVE,
+                        SMB2_0_IOCTL_IS_FSCTL,
+                        dceRpcBuf, offset,
+                        output_buf, &output_count);
+    if (status != SMB2_STATUS_SUCCESS) {
+        smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for OpenPolicy2: %s", smb2_get_error(smb2));
+        return -1;
+    }
+    if (dcerpc_parse_Operation_Response(smb2,
+                                        output_buf,
+                                        output_count,
+                                        &dceOpRes2,
                                         &status) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid: lsarpc_parse_OpenPolicy2Res failed : %x", status);
-                return -1;
-        }
+        smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response for OpenPolicy2 : %x", status);
+        return -1;
+    }
 
-        /* LookUp names now */
-        memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
-        memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
-        offset = 0;
+    offset = 0;
+    offset +=sizeof(DceRpcOperationResponse);
 
-        dceOpReq = (struct DceRpcOperationRequest *)&dceRpcBuf[0];
-        offset += sizeof(struct DceRpcOperationRequest);
+    if (lsarpc_parse_OpenPolicy2Res(smb2, output_buf+offset,
+                                    output_count-offset,
+                                    &pHandle,
+                                    &status) < 0) {
+        smb2_set_error(smb2, "smb2_lookUpSid: lsarpc_parse_OpenPolicy2Res failed : %x", status);
+        return -1;
+    }
 
-        if (lsarpc_create_LookUpNamesReq(smb2, &pHandle, user, domain,
-                                         dceRpcBuf+offset, MAX_IN_BUF_SIZE-offset, &bytes_used) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid: Create LookupNames req failed");
-                return -1;
-        }
-        offset += bytes_used;
+    /* LookUp names now */
+    memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
+    memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
+    offset = 0;
 
-        /* opnum - 14 - for LookupNames */
-        dcerpc_create_Operation_Request(smb2, dceOpReq, DCE_OP_LOOKUP_NAMES, bytes_used);
+    dceOpReq = (DceRpcOperationRequest *)&dceRpcBuf[0];
+    offset += sizeof(DceRpcOperationRequest);
 
-        if (offset > max_xmit_frag) {
-                smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
-                return -1;
-        }
+    if (lsarpc_create_LookUpNamesReq(smb2, &pHandle, user, domain,
+                                     dceRpcBuf+offset, MAX_IN_BUF_SIZE-offset, &bytes_used) < 0) {
+        smb2_set_error(smb2, "smb2_lookUpSid: Create LookupNames req failed");
+        return -1;
+    }
+    offset += bytes_used;
 
-        status = smb2_ioctl(smb2, fh,
-                            FSCTL_PIPE_TRANSCEIVE,
-                            SMB2_0_IOCTL_IS_FSCTL,
-                            dceRpcBuf, offset,
-                            output_buf, &output_count);
-        if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for LookupNames : %s", smb2_get_error(smb2));
-                return -1;
-        }
-        if (dcerpc_parse_Operation_Response(smb2,
-                                            output_buf,
-                                            output_count,
-                                            &dceOpRes2,
-                                            &status) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response for LookupNames : %x", status);
-                return -1;
-        }
+    /* opnum - 14 - for LookupNames */
+    dcerpc_create_Operation_Request(smb2, dceOpReq, DCE_OP_LOOKUP_NAMES, bytes_used);
 
-        offset = 0;
-        offset +=sizeof(struct DceRpcOperationResponse);
-        if (lsarpc_parse_LookupNamesRes(smb2,
-                                        output_buf+offset,
-                                        output_count-offset,
-                                        sid,
+    if (offset > max_xmit_frag) {
+        smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
+        return -1;
+    }
+
+    status = smb2_ioctl(smb2, fh,
+                        FSCTL_PIPE_TRANSCEIVE,
+                        SMB2_0_IOCTL_IS_FSCTL,
+                        dceRpcBuf, offset,
+                        output_buf, &output_count);
+    if (status != SMB2_STATUS_SUCCESS) {
+        smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for LookupNames : %s", smb2_get_error(smb2));
+        return -1;
+    }
+    if (dcerpc_parse_Operation_Response(smb2,
+                                        output_buf,
+                                        output_count,
+                                        &dceOpRes2,
                                         &status) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid:lsarpc_parse_LookupNamesRes failed : %x", status);
-                return -1;
-        }
+        smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response for LookupNames : %x", status);
+        return -1;
+    }
 
-        /* Close the policy handle */
-        memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
-        memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
-        offset = 0;
+    offset = 0;
+    offset +=sizeof(DceRpcOperationResponse);
+    if (lsarpc_parse_LookupNamesRes(smb2,
+                                    output_buf+offset,
+                                    output_count-offset,
+                                    sid,
+                                    &status) < 0) {
+        smb2_set_error(smb2, "smb2_lookUpSid:lsarpc_parse_LookupNamesRes failed : %x", status);
+        return -1;
+    }
+
+    /* Close the policy handle */
+    memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
+    memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
+    offset = 0;
 
 #if 0
-        dceOpReq = (struct DceRpcOperationRequest *)&dceRpcBuf[0];
-        offset += sizeof(struct DceRpcOperationRequest);
+    dceOpReq = (DceRpcOperationRequest *)&dceRpcBuf[0];
+    offset += sizeof(DceRpcOperationRequest);
 
-        lsarpc_create_ClosePolicy2eq(smb2, &pHandle, dceRpcBuf+offset, MAX_IN_BUF_SIZE-offset, &bytes_used);
-        offset += bytes_used;
+    lsarpc_create_ClosePolicy2eq(smb2, &pHandle, dceRpcBuf+offset, MAX_IN_BUF_SIZE-offset, &bytes_used);
+    offset += bytes_used;
 
-        /* opnum - 0 - for ClosePolicy */
-        dcerpc_create_Operation_Request(smb2, dceOpReq, DCE_OP_CLOSE_POLICY, bytes_used);
+    /* opnum - 0 - for ClosePolicy */
+    dcerpc_create_Operation_Request(smb2, dceOpReq, DCE_OP_CLOSE_POLICY, bytes_used);
 
-        if (offset > max_xmit_frag) {
-                smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
-                return -1;
-        }
+    if (offset > max_xmit_frag) {
+        smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
+        return -1;
+    }
 
-        status = smb2_ioctl(smb2, fh,
-                            FSCTL_PIPE_TRANSCEIVE,
-                            SMB2_0_IOCTL_IS_FSCTL,
-                            dceRpcBuf, offset,
-                            output_buf, &output_count);
-        if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for close policy: %s",
-                               smb2_get_error(smb2));
-                return -1;
-        }
-        if (dcerpc_parse_Operation_Response(smb2,
-                                            output_buf,
-                                            output_count,
-                                            &dceOpRes2,
-                                            &status) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid:dcerpc_parse_Operation_Response failed : %x", status);
-                return -1;
-        }
+    status = smb2_ioctl(smb2, fh,
+                        FSCTL_PIPE_TRANSCEIVE,
+                        SMB2_0_IOCTL_IS_FSCTL,
+                        dceRpcBuf, offset,
+                        output_buf, &output_count);
+    if (status != SMB2_STATUS_SUCCESS) {
+        smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for close policy: %s", smb2_get_error(smb2));
+        return -1;
+    }
+    if (dcerpc_parse_Operation_Response(smb2,
+                                        output_buf,
+                                        output_count,
+                                        &dceOpRes2,
+                                        &status) < 0) {
+        smb2_set_error(smb2, "smb2_lookUpSid:dcerpc_parse_Operation_Response failed : %x", status);
+        return -1;
+    }
 #endif
 
-        /* close the pipe & disconnect */
-        smb2_close(smb2, fh);
-        smb2_disconnect_share(smb2);
-        return 0;
+    /* close the pipe & disconnect */
+    smb2_close(smb2, fh);
+    smb2_disconnect_share(smb2);
+    return 0;
 }
