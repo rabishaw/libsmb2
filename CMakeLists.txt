@@ -6,7 +6,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(ENABLE_EXAMPLES "Build example programs" ON)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O2 -fshort-wchar -Werror -Wno-unused-but-set-variable -Wno-strict-aliasing -Wno-narrowing")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O2 -fshort-wchar -Werror -Wno-unused-but-set-variable -Wno-strict-aliasing -Wno-narrowing -Wno-literal-suffix")
 
 #not sure if it should be here
 add_definitions(-D_REENTRANT -DR_LINUX_3 -D_POSIX_PTHREAD_SEMANTICS -D_GNU_SOURCE=1)
