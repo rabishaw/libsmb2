@@ -197,7 +197,7 @@ smb2_read_from_socket(struct smb2_context *smb2)
 
 read_more_data:
         num_done = smb2->in.num_done;
-        
+
         /* Copy all the current vectors to our work vector */
         niov = smb2->in.niov;
         for (i = 0; i < niov; i++) {
@@ -205,14 +205,14 @@ read_more_data:
                 iov[i].iov_len = smb2->in.iov[i].len;
         }
         tmpiov = iov;
-        
+
         /* Skip the vectors we have already read */
         while (num_done >= tmpiov->iov_len) {
                 num_done -= tmpiov->iov_len;
                 tmpiov++;
                 niov--;
         }
-        
+
         /* Adjust the first vector to read */
         tmpiov->iov_base = (char *)tmpiov->iov_base + num_done;
         tmpiov->iov_len -= num_done;
@@ -407,7 +407,7 @@ read_more_data:
         /* We are all done now with this chain. Reset num_done to 0
          * and restart with a new SPL for the next chain.
          */
-        smb2->in.num_done = 0;        
+        smb2->in.num_done = 0;
 
 	return 0;
 }
@@ -415,76 +415,66 @@ read_more_data:
 int
 smb2_service(struct smb2_context *smb2, int revents)
 {
-	if (smb2->fd < 0) {
-		return 0;
-	}
-
-        if (revents & POLLERR) {
-		int err = 0;
-		socklen_t err_size = sizeof(err);
-
-		if (getsockopt(smb2->fd, SOL_SOCKET, SO_ERROR,
-			       (char *)&err, &err_size) != 0 || err != 0) {
-			if (err == 0) {
-				err = errno;
-			}
-			smb2_set_error(smb2, "smb2_service: socket error "
-					"%s(%d).",
-					strerror(err), err);
-		} else {
-			smb2_set_error(smb2, "smb2_service: POLLERR, "
-					"Unknown socket error.");
-		}
-		return -1;
-	}
-	if (revents & POLLHUP) {
-		smb2_set_error(smb2, "smb2_service: POLLHUP, "
-				"socket error.");
-                return -1;
-	}
-
-	if (smb2->is_connected == 0 && revents & POLLOUT) {
-		int err = 0;
-		socklen_t err_size = sizeof(err);
-
-		if (getsockopt(smb2->fd, SOL_SOCKET, SO_ERROR,
-			       (char *)&err, &err_size) != 0 || err != 0) {
-			if (err == 0) {
-				err = errno;
-			}
-			smb2_set_error(smb2, "smb2_service: socket error "
-					"%s(%d) while connecting.",
-					strerror(err), err);
-			if (smb2->connect_cb) {
-				smb2->connect_cb(smb2, err,
-                                                 NULL, smb2->connect_data);
-				smb2->connect_cb = NULL;
-			}
-                        return -1;
-		}
-
-		smb2->is_connected = 1;
-		if (smb2->connect_cb) {
-			smb2->connect_cb(smb2, 0, NULL,	smb2->connect_data);
-			smb2->connect_cb = NULL;
-		}
-		return 0;
-	}
-
-	if (revents & POLLIN) {
-		if (smb2_read_from_socket(smb2) != 0) {
-                        return -1;
-		}
-	}
-        
-	if (revents & POLLOUT && smb2->outqueue != NULL) {
-		if (smb2_write_to_socket(smb2) != 0) {
-                        return -1;
-		}
-	}
-
-        
+    if (smb2->fd < 0) {
         return 0;
+    }
+
+    if (revents & POLLERR) {
+        int err = 0;
+        socklen_t err_size = sizeof(err);
+
+        if (getsockopt(smb2->fd, SOL_SOCKET, SO_ERROR, (char *)&err, &err_size) != 0 || err != 0) {
+            if (err == 0) {
+                err = errno;
+            }
+            smb2_set_error(smb2, "smb2_service: socket error %s(%d).", strerror(err), err);
+        } else {
+            smb2_set_error(smb2, "smb2_service: POLLERR, Unknown socket error.");
+        }
+        return -1;
+    }
+    if (revents & POLLHUP) {
+        smb2_set_error(smb2, "smb2_service: POLLHUP, socket error.");
+        return -1;
+    }
+
+    if (smb2->is_connected == 0 && revents & POLLOUT) {
+        int err = 0;
+        socklen_t err_size = sizeof(err);
+
+        if (getsockopt(smb2->fd, SOL_SOCKET, SO_ERROR, (char *)&err, &err_size) != 0 || err != 0) {
+            if (err == 0) {
+                err = errno;
+            }
+            smb2_set_error(smb2, "smb2_service: socket error %s(%d) while connecting.", strerror(err), err);
+            if (smb2->connect_cb) {
+                smb2->connect_cb(smb2, err, NULL, smb2->connect_data);
+                smb2->connect_cb = NULL;
+            }
+            return -1;
+        }
+
+        smb2->is_connected = 1;
+        if (smb2->connect_cb) {
+            smb2->connect_cb(smb2, 0, NULL,	smb2->connect_data);
+            smb2->connect_cb = NULL;
+        }
+        return 0;
+    }
+
+    if (revents & POLLIN) {
+        if (smb2_read_from_socket(smb2) != 0) {
+            return -1;
+        }
+    }
+
+    if (revents & POLLOUT && smb2->outqueue != NULL) {
+        if (smb2_write_to_socket(smb2) != 0) {
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 static void
@@ -503,128 +493,117 @@ set_nonblocking(t_socket fd)
 static int
 set_tcp_sockopt(t_socket sockfd, int optname, int value)
 {
-	int level;
+    int level;
 #ifndef SOL_TCP
-	struct protoent *buf;
+    struct protoent *buf;
 
-	if ((buf = getprotobyname("tcp")) != NULL) {
-		level = buf->p_proto;
-        } else {
-		return -1;
-        }
+    if ((buf = getprotobyname("tcp")) != NULL) {
+        level = buf->p_proto;
+    } else {
+        return -1;
+    }
 #else
-        level = SOL_TCP;
+    level = SOL_TCP;
 #endif
 
-	return setsockopt(sockfd, level, optname, (char *)&value, sizeof(value));
+    return setsockopt(sockfd, level, optname, (char *)&value, sizeof(value));
 }
 
 int
 smb2_connect_async(struct smb2_context *smb2, const char *server,
                    smb2_command_cb cb, void *private_data)
 {
-        char *addr, *host;
-        struct addrinfo *ai = NULL;
-        struct sockaddr_storage ss;
-        socklen_t socksize;
-        int family;
+    char *addr, *host;
+    struct addrinfo *ai = NULL;
+    struct sockaddr_storage ss;
+    socklen_t socksize;
+    int family;
 
-        if (smb2->fd != -1) {
-                smb2_set_error(smb2, "Trying to connect but already "
-                               "connected.");
-                return -1;
-        }
+    if (smb2->fd != -1) {
+        smb2_set_error(smb2, "Trying to connect but already connected.");
+        return -1;
+    }
 
-        addr = strdup(server);
-        if (addr == NULL) {
-                smb2_set_error(smb2, "Out-of-memory: "
-                               "Failed to strdup server address.");
-                return -1;
-        }
-        host = addr;
+    addr = strdup(server);
+    if (addr == NULL) {
+        smb2_set_error(smb2, "Out-of-memory: Failed to strdup server address.");
+        return -1;
+    }
+    host = addr;
 
-        /* ipv6 in [...] form ? */
-        if (host[0] == '[') {
-                char *str;
-                
-                host++;
-                str = strchr(host, ']');
-                if (str == NULL) {
-                        free(addr);
-                        smb2_set_error(smb2, "Invalid address:%s  "
-                                "Missing ']' in IPv6 address", server);
-                        return -1;
-                }
-                *str = 0;
-        }
+    /* ipv6 in [...] form ? */
+    if (host[0] == '[') {
+        char *str;
 
-        /* is it a hostname ? */
-        if (getaddrinfo(host, NULL, NULL, &ai) != 0) {
-                free(addr);
-                smb2_set_error(smb2, "Invalid address:%s  "
-                               "Can not resolv into IPv4/v6.", server);
-                return -1;
+        host++;
+        str = strchr(host, ']');
+        if (str == NULL) {
+            free(addr);
+            smb2_set_error(smb2, "Invalid address:%s Missing ']' in IPv6 address", server);
+            return -1;
         }
+        *str = 0;
+    }
+
+    /* is it a hostname ? */
+    if (getaddrinfo(host, NULL, NULL, &ai) != 0) {
         free(addr);
+        smb2_set_error(smb2, "Invalid address:%s Can not resolv into IPv4/v6.", server);
+        return -1;
+    }
+    free(addr);
 
-        memset(&ss, 0, sizeof(ss));
-        switch (ai->ai_family) {
+    memset(&ss, 0, sizeof(ss));
+    switch (ai->ai_family) {
         case AF_INET:
-                socksize = sizeof(struct sockaddr_in);
-                memcpy(&ss, ai->ai_addr, socksize);
-                ((struct sockaddr_in *)&ss)->sin_port = htons(CIFS_PORT);
+            socksize = sizeof(struct sockaddr_in);
+            memcpy(&ss, ai->ai_addr, socksize);
+            ((struct sockaddr_in *)&ss)->sin_port = htons(CIFS_PORT);
 #ifdef HAVE_SOCK_SIN_LEN
-                ((struct sockaddr_in *)&ss)->sin_len = socksize;
+            ((struct sockaddr_in *)&ss)->sin_len = socksize;
 #endif
-                break;
+        break;
 #ifdef HAVE_SOCKADDR_IN6
         case AF_INET6:
-                socksize = sizeof(struct sockaddr_in6);
-                memcpy(&ss, ai->ai_addr, socksize);
-                ((struct sockaddr_in6 *)&ss)->sin6_port = htons(CIFS_PORT);
+            socksize = sizeof(struct sockaddr_in6);
+            memcpy(&ss, ai->ai_addr, socksize);
+            ((struct sockaddr_in6 *)&ss)->sin6_port = htons(CIFS_PORT);
 #ifdef HAVE_SOCK_SIN_LEN
-                ((struct sockaddr_in6 *)&ss)->sin6_len = socksize;
+            ((struct sockaddr_in6 *)&ss)->sin6_len = socksize;
 #endif
-                break;
+        break;
 #endif
         default:
-                smb2_set_error(smb2, "Unknown address family :%d. "
-                                "Only IPv4/IPv6 supported so far.",
-                                ai->ai_family);
-                freeaddrinfo(ai);
-                return -1;
+            smb2_set_error(smb2, "Unknown address family :%d. Only IPv4/IPv6 supported so far.", ai->ai_family);
+            freeaddrinfo(ai);
+            return -1;
+    }
+    family = ai->ai_family;
+    freeaddrinfo(ai);
 
-        }
-        family = ai->ai_family;
-        freeaddrinfo(ai);
+    smb2->connect_cb   = cb;
+    smb2->connect_data = private_data;
 
-        smb2->connect_cb   = cb;
-        smb2->connect_data = private_data;
+    smb2->fd = socket(family, SOCK_STREAM, 0);
+    if (smb2->fd == -1) {
+        smb2_set_error(smb2, "Failed to open smb2 socket. Errno:%s(%d).", strerror(errno), errno);
+        return -1;
+    }
 
-      
-	smb2->fd = socket(family, SOCK_STREAM, 0);
-	if (smb2->fd == -1) {
-		smb2_set_error(smb2, "Failed to open smb2 socket. "
-                               "Errno:%s(%d).", strerror(errno), errno);
-		return -1;
-	}
+    set_nonblocking(smb2->fd);
+    set_tcp_sockopt(smb2->fd, TCP_NODELAY, 1);
 
-	set_nonblocking(smb2->fd);
-	set_tcp_sockopt(smb2->fd, TCP_NODELAY, 1);
-        
-	if (connect(smb2->fd, (struct sockaddr *)&ss, socksize) != 0
+    if (connect(smb2->fd, (struct sockaddr *)&ss, socksize) != 0
 #ifndef _MSC_VER
-		  && errno != EINPROGRESS) {
+        && errno != EINPROGRESS) {
 #else
-		  && WSAGetLastError() != WSAEWOULDBLOCK) {
+        && WSAGetLastError() != WSAEWOULDBLOCK) {
 #endif
-		smb2_set_error(smb2, "Connect failed with errno : "
-			"%s(%d)", strerror(errno), errno);
-		close(smb2->fd);
-		smb2->fd = -1;
-		return -1;
-	}
+        smb2_set_error(smb2, "Connect failed with errno : %s(%d)", strerror(errno), errno);
+        close(smb2->fd);
+        smb2->fd = -1;
+        return -1;
+    }
 
-        return 0;
+    return 0;
 }
-
