@@ -225,6 +225,9 @@ struct smb2_context *smb2_init_context(void)
         smb2->signing_required = 0;
         memset(smb2->signing_key, 0, SMB2_KEY_SIZE);
 
+        memset(smb2->Salt, 0, 32);
+        smb2->SaltLength = 0;
+
         smb2->ntstatus = SMB2_STATUS_SUCCESS;
 
         return smb2;

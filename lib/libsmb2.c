@@ -770,7 +770,7 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
         if (smb2->sec == SMB2_SEC_KRB5) {
                 smb2->use_cached_creds = 1;
         }
-        smb2->version = SMB2_VERSION_0210;
+        smb2->version = SMB2_VERSION_ANY3;
 
         switch (smb2->version) {
         case SMB2_VERSION_ANY:
@@ -801,8 +801,27 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
                 req.dialects[0] = smb2->version;
                 break;
         }
+        req.max_dialect = req.dialects[req.dialect_count - 1];
 
         memcpy(req.client_guid, smb2_get_client_guid(smb2), SMB2_GUID_SIZE);
+
+        if (req.max_dialect == SMB2_VERSION_0311) {
+                /* fill the salt and save it in smb2_context */
+                smb2->SaltLength = 32; // most use 32 byte salts
+                int i = 0;
+                for (; i < smb2->SaltLength; i++) {
+                    smb2->Salt[i] = rand() % 255;
+                }
+                /* create Pre-Auth integrity context */
+                req.preAuthIntegCtx.HashAlgorithmCount = 1;
+                req.preAuthIntegCtx.SaltLength = smb2->SaltLength;
+                req.preAuthIntegCtx.HashAlgorithms = 0x0001; /* SHA-512 */
+
+                req.preAuthIntegCtx.ctx_hdr.ContextType = SMB2_PREAUTH_INTEGRITY_CAPABILITIES;
+                req.preAuthIntegCtx.ctx_hdr.DataLength = smb2->SaltLength + 2 + 2 + 2;
+
+                req.NegotiateContextCount = 1;
+        }
 
         pdu = smb2_cmd_negotiate_async(smb2, &req, negotiate_cb, conn_data);
         if (pdu == NULL) {

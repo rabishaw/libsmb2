@@ -94,6 +94,10 @@ enum smb2_negotiate_version {
 #define SMB2_GLOBAL_CAP_DIRECTORY_LEASING  0x00000020
 #define SMB2_GLOBAL_CAP_ENCRYPTION         0x00000040
 
+/* SMB 3 negotiate context types */
+#define SMB2_PREAUTH_INTEGRITY_CAPABILITIES 0x0001
+#define SMB2_ENCRYPTION_CAPABILITIES        0x0002
+
 #define SMB2_NEGOTIATE_MAX_DIALECTS 10
 
 #define SMB2_NEGOTIATE_REQUEST_SIZE 36
@@ -101,13 +105,37 @@ enum smb2_negotiate_version {
 #define SMB2_GUID_SIZE 16
 typedef uint8_t smb2_guid[SMB2_GUID_SIZE];
 
+typedef struct _smb2_neg_ctx_hdr {
+        uint16_t ContextType;
+        uint16_t DataLength;
+        uint32_t Reserved;
+} smb2_neg_ctx_hdr;
+
+typedef struct _smb2_preauth_ctx {
+        smb2_neg_ctx_hdr ctx_hdr;
+        uint16_t HashAlgorithmCount;
+        uint16_t SaltLength;
+        uint16_t HashAlgorithms;
+        /* Salt - variable */
+} smb2_preauth_integ_context;
+
 struct smb2_negotiate_request {
         uint16_t dialect_count;
         uint16_t security_mode;
         uint32_t capabilities;
         smb2_guid client_guid;
+
+/* for dialects < SMB 3.1.1 client_start_time is used.
+ * where as for SMB 3.1.1 NegotiateContextOffset, NegotiateContextCount are used
+ */
         uint64_t client_start_time;
+        uint32_t NegotiateContextOffset;
+        uint16_t NegotiateContextCount;
+        uint16_t Reserved;
+
         uint16_t dialects[SMB2_NEGOTIATE_MAX_DIALECTS];
+        uint16_t max_dialect;
+        smb2_preauth_integ_context preAuthIntegCtx;
 };
 
 #define SMB2_NEGOTIATE_REPLY_SIZE 65

@@ -51,12 +51,17 @@ smb2_encode_negotiate_request(struct smb2_context *smb2,
                               struct smb2_negotiate_request *req)
 {
         uint8_t *buf;
-        int i, len;
+        int i, len, ctx_len;
         struct smb2_iovec *iov;
         
         len = SMB2_NEGOTIATE_REQUEST_SIZE +
                 req->dialect_count * sizeof(uint16_t);
-        len = PAD_TO_32BIT(len);
+        //len = PAD_TO_32BIT(len); // 8 byte alligned
+        if ((len & 0x07) != 0) {
+                int padlen = 8 - (len & 0x07);
+                len += padlen;
+        }
+
         buf = malloc(len);
         if (buf == NULL) {
                 smb2_set_error(smb2, "Failed to allocate negotiate buffer");
@@ -71,11 +76,41 @@ smb2_encode_negotiate_request(struct smb2_context *smb2,
         smb2_set_uint16(iov, 4, req->security_mode);
         smb2_set_uint32(iov, 8, req->capabilities);
         memcpy(iov->buf + 12, req->client_guid, SMB2_GUID_SIZE);
-        smb2_set_uint64(iov, 28, req->client_start_time);
+        if (req->max_dialect < SMB2_VERSION_0311) {
+                smb2_set_uint64(iov, 28, req->client_start_time);
+        } else {
+                req->NegotiateContextOffset = SMB2_HEADER_SIZE + len;
+                smb2_set_uint32(iov, 28, req->NegotiateContextOffset);
+                smb2_set_uint16(iov, 32, req->NegotiateContextCount);
+        }
+
         for (i = 0; i < req->dialect_count; i++) {
                 smb2_set_uint16(iov, 36 + i * sizeof(uint16_t),
                                 req->dialects[i]);
         }
+
+        /* Now add the contexts */
+        ctx_len = sizeof(smb2_preauth_integ_context) + smb2->SaltLength;
+        if ((ctx_len & 0x07) != 0) {
+                int padlen = 8 - (ctx_len & 0x07);
+                ctx_len += padlen;
+        }
+
+        buf = malloc(ctx_len);
+        if (buf == NULL) {
+                smb2_set_error(smb2, "Failed to allocate negotiate context buffer");
+                return -1;
+        }
+        memset(buf, 0, ctx_len);
+
+        iov = smb2_add_iovector(smb2, &pdu->out, buf, ctx_len, free);
+
+        smb2_set_uint16(iov, 0, req->preAuthIntegCtx.ctx_hdr.ContextType);
+        smb2_set_uint16(iov, 2, req->preAuthIntegCtx.ctx_hdr.DataLength);
+        smb2_set_uint16(iov, 8, req->preAuthIntegCtx.HashAlgorithmCount);
+        smb2_set_uint16(iov, 10, req->preAuthIntegCtx.SaltLength);
+        smb2_set_uint16(iov, 12, req->preAuthIntegCtx.HashAlgorithms);
+        memcpy(iov->buf + 14, &smb2->Salt[0], smb2->SaltLength);
 
         return 0;
 }
